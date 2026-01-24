@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { Lead } from "../models/Lead";
 import { fetchLeadDetails, sendTemplateMessage, sendWhatsAppMessage } from "../services/whatsapp.service";
+import { handleMessage } from "../utills/messageHandler";
+import { biz } from "../utills/bizData";
 
 const router = Router();
 
@@ -33,13 +35,13 @@ router.get("/webhook", (req: Request, res: Response) => {
  * =====================================
  * This handles incoming messages and lead form submissions.
  */
+// src/routes/webhook.ts
+
+
 router.post("/webhook", async (req: Request, res: Response) => {
   console.log("🟢 [WEBHOOK HIT] Incoming Meta Webhook Event");
   
   try {
-    // Log the full body for deep debugging
-    // console.log("Full Payload:", JSON.stringify(req.body, null, 2));
-
     const entry = req.body.entry?.[0];
     const change = entry?.changes?.[0];
 
@@ -60,23 +62,29 @@ router.post("/webhook", async (req: Request, res: Response) => {
       const message = value?.messages?.[0];
       
       if (!message) {
-        console.log("ℹ️ Webhook hit for 'messages' but no message object found (Status/Read update).");
+        console.log("ℹ️ Webhook hit for 'messages' but no message object found.");
         return res.sendStatus(200);
       }
 
       const from = message.from;
       const text = message.text?.body;
-      const contactName = value?.contacts?.[0]?.profile?.name || "Customer";
+      const contactName = value?.contacts?.[0]?.profile?.name || "there";
 
-      console.log(`📩 Message Received | From: ${contactName} (${from}) | Text: "${text}"`);
+      console.log(`📩 Message from ${contactName} (${from}): "${text}"`);
 
-      // Attempt to send the reply
+      // Use our smart message handler instead of simple reply
       try {
-        console.log(`📤 Triggering auto-reply to ${from}...`);
-        await sendWhatsAppMessage(from, `Hi ${contactName}! Bot received your message: ${text}`);
-        console.log(`🎉 SUCCESS: Manual reply sent to ${from}`);
+        await handleMessage(from, text || "", contactName);
+        console.log(`✅ Reply sent to ${contactName}`);
       } catch (sendError: any) {
-        console.error(`❌ FAILED to send message to ${from}:`, sendError.message);
+        console.error(`❌ Failed to process message:`, sendError.message);
+        
+        // Even on error, try to send something
+        try {
+          await sendWhatsAppMessage(from, `Hi ${contactName}! Sorry, I'm having a moment. Could you email ${biz.contact.email}?`);
+        } catch (e) {
+          console.error("Double failure!");
+        }
       }
     }
 
@@ -84,63 +92,66 @@ router.post("/webhook", async (req: Request, res: Response) => {
      * 2️⃣ HANDLE LEADGEN EVENTS (Meta Lead Forms)
      */
     else if (field === "leadgen") {
-      console.log("📊 [LEADGEN] Processing new Lead Form submission...");
+      console.log("📊 Processing new Lead Form...");
       
       const leadId = value?.leadgen_id;
       if (!leadId) {
-        console.error("❌ Lead ID missing from leadgen event.");
+        console.error("❌ No Lead ID");
         return res.sendStatus(200);
       }
 
-      // Check for duplicate to avoid double-messaging
+      // Check duplicate
       const existingLead = await Lead.findOne({ leadId });
       if (existingLead) {
-        console.log(`⚠️ Duplicate lead ignored: ${leadId}`);
+        console.log(`⚠️ Duplicate lead: ${leadId}`);
         return res.sendStatus(200);
       }
 
-      console.log(`📡 Fetching data for Lead ID: ${leadId}`);
+      console.log(`📡 Fetching lead: ${leadId}`);
       const leadInfo = await fetchLeadDetails(leadId);
 
-      // Extract Name and Phone
-      const name = leadInfo.field_data?.find((f: any) => f.name === "full_name")?.values?.[0] || "Customer";
+      // Extract data
+      const name = leadInfo.field_data?.find((f: any) => f.name === "full_name")?.values?.[0] || "Friend";
       const phone = leadInfo.field_data?.find((f: any) => f.name === "phone_number")?.values?.[0];
 
       if (!phone) {
-        console.error("❌ Phone number not found in lead data.");
+        console.error("❌ No phone in lead");
         return res.sendStatus(200);
       }
 
-      console.log(`👤 New Lead Identified: ${name} (${phone})`);
+      console.log(`👤 New Lead: ${name} (${phone})`);
 
-      // Save to MongoDB
-      await Lead.create({ name, phone, leadId, status: "AUTO_SENT" });
-      console.log("💾 Lead saved to MongoDB.");
+      // Save to DB
+      await Lead.create({ 
+        name, 
+        phone, 
+        leadId, 
+        status: "AUTO_SENT",
+        createdAt: new Date()
+      });
+      console.log("💾 Lead saved");
 
-      // Send the Template Message
+      // Send welcome message using our handler
       try {
-        await sendTemplateMessage(phone, name);
-        console.log(`🎉 SUCCESS: Template message sent to Lead: ${name}`);
-      } catch (templateError: any) {
-        console.error("❌ FAILED to send template message:", templateError.message);
+        await handleMessage(phone, "hi", name);
+        console.log(`🎉 Welcome sent to ${name}`);
+      } catch (error) {
+        console.error("Failed to send welcome:", error);
       }
     }
 
-    // Always return 200 within 4 seconds to Meta
+    // Always return 200
     res.sendStatus(200);
     
   } catch (error: any) {
-    console.error("🔥 CRITICAL WEBHOOK ERROR:");
+    console.error("🔥 CRITICAL ERROR:");
     console.error("Message:", error.message);
-    if (error.stack) console.error("Stack:", error.stack);
-
-    // Still return 200 so Meta doesn't disable your webhook for retrying failures
     res.sendStatus(200);
   }
 });
 
+// Make sure to import this in your main app
 export default router;
-
 
 
 // import { Router, Request, Response } from "express";

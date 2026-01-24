@@ -1,35 +1,35 @@
-// src/handlers/messageHandler.ts
-import { biz } from './bizData';
-import { sendWhatsAppMessage } from '../services/whatsapp.service'; 
+// src/handlers/messageHandler.ts - UPDATED VERSION
+import { biz } from './bizData'; 
+import { sendWhatsAppMessage } from '../services/whatsapp.service';
 import { generateAIResponse } from '../services/groqService';
 
-// Session interface
+// Session interface remains the same
 interface Session {
   phone: string;
+  name: string;
   currentTopic: 'agentic_ai' | 'data_analytics' | null;
-  conversationStage: 'new' | 'greeting' | 'topic_selected';
+  conversationStage: 'new' | 'greeting' | 'topic_selected' | 'conversation';
+  messageCount: number;
   lastQuestion: string | null;
-  lastResponseType: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Simple in-memory session store
 const sessions = new Map<string, Session>();
 
-// Helper functions
 const cleanText = (text: string): string => {
   return text.toLowerCase().trim().replace(/[^\w\s]/gi, '');
 };
 
-const getSession = (phone: string): Session => {
+const getSession = (phone: string, userName: string): Session => {
   if (!sessions.has(phone)) {
     sessions.set(phone, {
       phone,
+      name: userName,
       currentTopic: null,
       conversationStage: 'new',
+      messageCount: 0,
       lastQuestion: null,
-      lastResponseType: null,
       createdAt: new Date(),
       updatedAt: new Date()
     });
@@ -38,246 +38,246 @@ const getSession = (phone: string): Session => {
 };
 
 const updateSession = (phone: string, updates: Partial<Session>): Session => {
-  const session = getSession(phone);
-  Object.assign(session, updates, { updatedAt: new Date() });
+  const session = getSession(phone, updates.name || '');
+  Object.assign(session, { ...updates, updatedAt: new Date() });
   sessions.set(phone, session);
   return session;
 };
 
-// Main message handler function - COMPLETE VERSION
+// NEW: Better formatted greetings
+const getFormattedGreeting = (userName: string): string => {
+  const now = new Date();
+  const hour = now.getHours();
+  let timeGreeting = "Hello";
+  
+  if (hour < 12) timeGreeting = "Good morning";
+  else if (hour < 18) timeGreeting = "Good afternoon";
+  else timeGreeting = "Good evening";
+  
+  return `${timeGreeting} ${userName}! 👋\n\nI'm here to help you explore career opportunities! 🚀\n\nAt ${biz.company_name}, we offer:\n\n🤖 *Agentic AI Program* - Build autonomous AI systems\n📊 *Data Analytics Program* - Master data-driven decisions\n\n*Which program interests you? Reply with "AI" or "Data"*`;
+};
+
+// NEW: Course overview with better formatting
+const getCourseOverview = (): string => {
+  return `*Our Career-Transforming Programs:*\n\n📱 *Perfect for your career growth!*\n\n` +
+         `🤖 *AGENTIC AI PROGRAM*\n` +
+         `   ${biz.faqs.agentic_ai_definition}\n\n` +
+         `📊 *DATA ANALYTICS PROGRAM*\n` +
+         `   ${biz.faqs.data_analytics_definition}\n\n` +
+         `🎯 *Both programs include:*\n` +
+         `• 100% Placement Support 🚀\n` +
+         `• Live + Recorded Classes 📚\n` +
+         `• Pay After Placement 💰\n` +
+         `• Industry Projects 🏆\n\n` +
+         `*Which one excites you? Reply "AI" or "Data"*`;
+};
+
+// NEW: Handle bot identity questions
+const handleBotQuestion = (text: string, userName: string): string => {
+  const clean = cleanText(text);
+  
+  if (clean.includes('bot') || clean.includes('ai') || clean.includes('robot')) {
+    if (clean.includes('are you bot') || clean.includes('you bot') || clean.includes('is this bot')) {
+      return `Interesting question, ${userName}! 🤔\n\nI'm an AI-powered career advisor from ${biz.company_name}. I'm here to provide instant, helpful information about our programs!\n\nWould you prefer to:\n1️⃣ Continue chatting with me\n2️⃣ Speak with a human advisor\n\n*Reply with 1 or 2*`;
+    }
+  }
+  return '';
+};
+
+// Main message handler - UPDATED
 export const handleMessage = async (from: string, text: string, userName: string): Promise<void> => {
+  const session = getSession(from, userName);
+  session.messageCount++;
+  
+  console.log(`💬 Message #${session.messageCount} from ${userName}: "${text}"`);
+  
   const cleanTextMsg = cleanText(text);
-  const session = getSession(from);
   
-  console.log(`🤖 Processing message from ${userName} (${from}): ${text}`);
-
-  /* ===== 1. FIRST: CHECK FOR SPECIFIC KEYWORDS & COMMANDS ===== */
-  // Keep all your existing rule-based logic for reliable responses
+  // 1️⃣ Handle greetings
+  const greetings = ['hi', 'hello', 'hey', 'hay', 'hii', 'hola', 'namaste', 'good morning', 'good afternoon', 'good evening'];
+  if (greetings.some(word => cleanTextMsg.includes(word))) {
+    updateSession(from, { conversationStage: 'greeting' });
+    
+    const greeting = getFormattedGreeting(userName);
+    await sendWhatsAppMessage(from, greeting);
+    return;
+  }
   
-  // GREETING HANDLER
-  if (["hi", "hello", "hey", "hay", "hii", "hola", "good morning", "good afternoon", "good evening"].includes(cleanTextMsg)) {
-    updateSession(from, { 
-      currentTopic: null, 
-      conversationStage: 'greeting' 
-    });
-    
-    await sendWhatsAppMessage(from, `Hi ${userName}! 👋 Welcome to ${biz.company_name}.\n\nI'm your Career Advisor. Which program interests you?\n\n🤖 *Agentic AI*\n📊 *Data Analytics*\n\n*Reply with your choice.*`);
+  // 2️⃣ Handle bot/identity questions
+  const botResponse = handleBotQuestion(text, userName);
+  if (botResponse) {
+    await sendWhatsAppMessage(from, botResponse);
     return;
   }
-
-  /* ===== TOPIC SELECTION ===== */
-  // Handle AI variations
-  if (cleanTextMsg.includes("agentic") || cleanTextMsg.includes("ai") || cleanTextMsg === "a" || cleanTextMsg === "ai") {
-    updateSession(from, { 
-      currentTopic: "agentic_ai",
-      conversationStage: "topic_selected",
-      lastQuestion: "overview"
-    });
+  
+  // 3️⃣ Handle "what courses" questions
+  if (cleanTextMsg.includes('course') || cleanTextMsg.includes('program') || cleanTextMsg.includes('provide') || 
+      cleanTextMsg.includes('offer') || cleanTextMsg.includes('tell me about course')) {
     
-    const aiMsg = `🤖 *Agentic AI – Complete Overview*\n\n${biz.official_knowledge.faqs.agentic_ai_definition}\n\n*Key Learning Areas:*\n${biz.official_knowledge.detailed_info.agentic_ai.tools.map((t: string) => `• ${t}`).join('\n')}\n\n*What would you like to know?*\n\n1️⃣ Curriculum details\n2️⃣ Eligibility & requirements\n3️⃣ Placement support\n4️⃣ Fees & payment\n5️⃣ Class schedule\n6️⃣ Contact admissions team\n\n*Reply with the number (1-6) or ask your question.*`;
-    
-    await sendWhatsAppMessage(from, aiMsg);
+    const courseOverview = getCourseOverview();
+    await sendWhatsAppMessage(from, courseOverview);
     return;
   }
-
-  // Handle Data Analytics variations
-  if (cleanTextMsg.includes("data") || cleanTextMsg.includes("analytics") || cleanTextMsg === "d" || cleanTextMsg === "da") {
+  
+  // 4️⃣ Program selection
+  if (cleanTextMsg.includes('agentic') || cleanTextMsg.includes('ai') || cleanTextMsg === 'a') {
     updateSession(from, { 
-      currentTopic: "data_analytics",
-      conversationStage: "topic_selected",
-      lastQuestion: "overview"
+      currentTopic: 'agentic_ai',
+      conversationStage: 'topic_selected'
     });
     
-    const dataMsg = `📊 *Data Analytics – Complete Overview*\n\n${biz.official_knowledge.faqs.data_analytics_definition}\n\n*Key Learning Areas:*\n${biz.official_knowledge.detailed_info.data_analytics.tools.map((t: string) => `• ${t}`).join('\n')}\n\n*What would you like to know?*\n\n1️⃣ Curriculum details\n2️⃣ Eligibility & requirements\n3️⃣ Placement support\n4️⃣ Fees & payment\n5️⃣ Class schedule\n6️⃣ Contact admissions team\n\n*Reply with the number (1-6) or ask your question.*`;
+    const response = `🤖 *Excellent choice! Agentic AI Program*\n\n` +
+                     `${biz.faqs.agentic_ai_definition}\n\n` +
+                     `*🚀 What You'll Learn:*\n` +
+                     `${biz.faqs.ai_tools.map(t => `• ${t}`).join('\n')}\n\n` +
+                     `*💼 Career Roles:*\n` +
+                     `${biz.faqs.ai_roles.map(r => `• ${r}`).join('\n')}\n\n` +
+                     `*What would you like to know next?*\n\n` +
+                     `1️⃣ Curriculum details\n` +
+                     `2️⃣ Eligibility & requirements\n` +
+                     `3️⃣ Placement support\n` +
+                     `4️⃣ Fees & payment\n` +
+                     `5️⃣ Class schedule\n` +
+                     `6️⃣ Contact admissions\n\n` +
+                     `*Reply with number (1-6) or ask your question*`;
     
-    await sendWhatsAppMessage(from, dataMsg);
+    await sendWhatsAppMessage(from, response);
     return;
   }
-
-  /* ===== NUMBERED OPTIONS HANDLER (1-6) ===== */
+  
+  if (cleanTextMsg.includes('data') || cleanTextMsg.includes('analytics') || cleanTextMsg === 'd') {
+    updateSession(from, { 
+      currentTopic: 'data_analytics',
+      conversationStage: 'topic_selected'
+    });
+    
+    const response = `📊 *Amazing! Data Analytics Program*\n\n` +
+                     `${biz.faqs.data_analytics_definition}\n\n` +
+                     `*📈 What You'll Learn:*\n` +
+                     `${biz.faqs.data_tools.map(t => `• ${t}`).join('\n')}\n\n` +
+                     `*💼 Career Roles:*\n` +
+                     `${biz.faqs.data_roles.map(r => `• ${r}`).join('\n')}\n\n` +
+                     `*What would you like to know next?*\n\n` +
+                     `1️⃣ Curriculum details\n` +
+                     `2️⃣ Eligibility & requirements\n` +
+                     `3️⃣ Placement support\n` +
+                     `4️⃣ Fees & payment\n` +
+                     `5️⃣ Class schedule\n` +
+                     `6️⃣ Contact admissions\n\n` +
+                     `*Reply with number (1-6) or ask your question*`;
+    
+    await sendWhatsAppMessage(from, response);
+    return;
+  }
+  
+  // 5️⃣ Numbered options (1-6)
   if (/^[1-6]$/.test(cleanTextMsg)) {
     const option = parseInt(cleanTextMsg);
-    
-    if (!session.currentTopic) {
-      await sendWhatsAppMessage(from, "Please choose a program first:\n🤖 *Agentic AI* or 📊 *Data Analytics*");
-      return;
-    }
-
-    const isAgentic = session.currentTopic === "agentic_ai";
-    const topicName = isAgentic ? "Agentic AI" : "Data Analytics";
-    const topicData = isAgentic ? biz.official_knowledge.detailed_info.agentic_ai : biz.official_knowledge.detailed_info.data_analytics;
-    const emoji = isAgentic ? "🤖" : "📊";
-    
-    let response = "";
-    
-    switch(option) {
-      case 1:
-        response = `${emoji} *${topicName} Curriculum*\n\n*Tools & Technologies:*\n${topicData.tools.map((t: string, i: number) => `${i+1}. ${t}`).join('\n')}\n\n*Projects:* ${biz.official_knowledge.faqs.projects}\n\n*Coding:* ${isAgentic ? biz.official_knowledge.faqs.ai_coding : biz.official_knowledge.faqs.data_coding}`;
-        break;
-        
-      case 2:
-        response = `${emoji} *Eligibility for ${topicName}*\n\n*Who Can Join:*\n${biz.official_knowledge.faqs.eligibility.map((e: string) => `• ${e}`).join('\n')}\n\n*Background:* Both technical and non-technical welcome\n*Support:* Everything taught from scratch`;
-        break;
-        
-      case 3:
-        response = `${emoji} *Placement Support*\n\n*${biz.official_knowledge.detailed_info.placement.guarantee}*\n\n*Includes:*\n${biz.official_knowledge.detailed_info.placement.details.map((d: string) => `• ${d}`).join('\n')}\n\n*Career Roles:*\n${topicData.roles.map((r: string) => `• ${r}`).join('\n')}\n\n*Salary:* ${biz.official_knowledge.faqs.salary_expectation}`;
-        break;
-        
-      case 4:
-        response = `${emoji} *Fees & Payment*\n\n*${biz.official_knowledge.faqs.pay_after_placement}*\n\n*Registration:* ${biz.official_knowledge.faqs.registration_fee}\n*Refund:* ${biz.official_knowledge.faqs.refund_policy}`;
-        break;
-        
-      case 5:
-        response = `${emoji} *Class Schedule*\n\n*Format:* ${biz.official_knowledge.detailed_info.class_format.mode}\n*Recordings:* ${biz.official_knowledge.detailed_info.class_format.recordings}\n*Support:* ${biz.official_knowledge.detailed_info.class_format.support}`;
-        break;
-        
-      case 6:
-        response = `📞 *Contact Admissions Team*\n\nFor enrollment or detailed consultation:\n\n📝 Callback Form: ${biz.contact.callback_form}\n📧 Email: ${biz.contact.email}\n\n*Our team will contact you within 24 hours.*`;
-        break;
-    }
-
-    updateSession(from, { 
-      lastQuestion: `option_${option}`,
-      lastResponseType: "numbered_response"
-    });
-    
-    await sendWhatsAppMessage(from, response + `\n\n*Need more help?*\n• Type 'enroll' for admission\n• Type 'contact' to speak with advisor\n• Type 'switch' for other program`);
+    const response = getNumberedResponse(option, session.currentTopic, userName);
+    await sendWhatsAppMessage(from, response);
     return;
   }
-
-  /* ===== KEYWORD HANDLERS ===== */
-  // Handle "placement" keyword
-  if (cleanTextMsg.includes("placement") || cleanTextMsg.includes("job") || cleanTextMsg.includes("career")) {
-    if (session.currentTopic) {
-      const isAgentic = session.currentTopic === "agentic_ai";
-      const topicName = isAgentic ? "Agentic AI" : "Data Analytics";
-      const topicData = isAgentic ? biz.official_knowledge.detailed_info.agentic_ai : biz.official_knowledge.detailed_info.data_analytics;
-      const emoji = isAgentic ? "🤖" : "📊";
-      
-      const placementMsg = `${emoji} *Placement Support for ${topicName}*\n\n*${biz.official_knowledge.detailed_info.placement.guarantee}*\n\n*Includes:*\n${biz.official_knowledge.detailed_info.placement.details.map((d: string) => `• ${d}`).join('\n')}\n\n*Career Roles:*\n${topicData.roles.map((r: string) => `• ${r}`).join('\n')}\n\n*Salary:* ${biz.official_knowledge.faqs.salary_expectation}\n\n*Ready to start? Type 'enroll' now!*`;
-      
-      await sendWhatsAppMessage(from, placementMsg);
-      return;
-    }
-  }
-
-  // Handle "curriculum" keyword
-  if (cleanTextMsg.includes("curriculum") || cleanTextMsg.includes("syllabus") || cleanTextMsg.includes("learn") || cleanTextMsg.includes("teach")) {
-    if (session.currentTopic) {
-      const isAgentic = session.currentTopic === "agentic_ai";
-      const topicName = isAgentic ? "Agentic AI" : "Data Analytics";
-      const topicData = isAgentic ? biz.official_knowledge.detailed_info.agentic_ai : biz.official_knowledge.detailed_info.data_analytics;
-      const emoji = isAgentic ? "🤖" : "📊";
-      
-      const curriculumMsg = `${emoji} *${topicName} Curriculum*\n\n*Tools & Technologies:*\n${topicData.tools.map((t: string) => `• ${t}`).join('\n')}\n\n*Projects:* ${biz.official_knowledge.faqs.projects}\n\n*Want detailed modules? Type 'enroll' for full syllabus.`;
-      
-      await sendWhatsAppMessage(from, curriculumMsg);
-      return;
-    }
-  }
-
-  // Handle "enroll" or "join" keywords
-  if (cleanTextMsg.includes("enroll") || cleanTextMsg.includes("join") || cleanTextMsg.includes("admission") || cleanTextMsg.includes("admit") || cleanTextMsg.includes("apply")) {
-    const enrollMsg = `🎉 *Great! Ready to Enroll*\n\nFor admission process:\n\n📝 Callback Form: ${biz.contact.callback_form}\n📧 Email: ${biz.contact.email}\n\n*Our admissions team will contact you within 24 hours to discuss:*\n• Course suitability\n• Payment options\n• Batch availability\n• Career roadmap`;
-    
-    await sendWhatsAppMessage(from, enrollMsg);
+  
+  // 6️⃣ Check FAQ for quick answers
+  const faqMatch = matchFAQ(text);
+  if (faqMatch.matched && faqMatch.response) {
+    console.log(`📚 FAQ matched: "${text}"`);
+    await sendWhatsAppMessage(from, `${faqMatch.response}\n\n${getFollowUp()}`);
     return;
   }
-
-  // Handle "contact" or "email" keywords
-  if (cleanTextMsg.includes("contact") || cleanTextMsg.includes("email") || cleanTextMsg.includes("mail") || cleanTextMsg.includes("call") || cleanTextMsg.includes("phone")) {
-    const contactMsg = `📞 *Contact Our Team*\n\nFor immediate assistance:\n\n📧 Email: ${biz.contact.email}\n📝 Callback Form: ${biz.contact.callback_form}\n\n*Response time:* 2-4 hours during business days`;
-    
-    await sendWhatsAppMessage(from, contactMsg);
-    return;
-  }
-
-  // Handle "fees" or "payment" keywords
-  if (cleanTextMsg.includes("fee") || cleanTextMsg.includes("payment") || cleanTextMsg.includes("cost") || cleanTextMsg.includes("price")) {
-    const feesMsg = `💰 *Fees & Payment Options*\n\n*${biz.official_knowledge.faqs.pay_after_placement}*\n\n*Registration:* ${biz.official_knowledge.faqs.registration_fee}\n*Refund:* ${biz.official_knowledge.faqs.refund_policy}\n\n*Need payment plan? Type 'enroll' to discuss options.*`;
-    
-    await sendWhatsAppMessage(from, feesMsg);
-    return;
-  }
-
-  // Handle "eligibility" keyword
-  if (cleanTextMsg.includes("eligibility") || cleanTextMsg.includes("qualification") || cleanTextMsg.includes("background")) {
-    const eligibilityMsg = `✅ *Eligibility Criteria*\n\n*Who Can Apply:*\n${biz.official_knowledge.faqs.eligibility.map((e: string) => `• ${e}`).join('\n')}\n\n*No prior experience required* - We teach from scratch!\n\n*Unsure? Type 'enroll' for free consultation.*`;
-    
-    await sendWhatsAppMessage(from, eligibilityMsg);
-    return;
-  }
-
-  // Handle "switch" keyword
-  if (cleanTextMsg.includes("switch") || cleanTextMsg.includes("other") || cleanTextMsg.includes("change")) {
-    if (session.currentTopic) {
-      const newTopic = session.currentTopic === "agentic_ai" ? "data_analytics" : "agentic_ai";
-      const emoji = newTopic === "agentic_ai" ? "🤖" : "📊";
-      const topicName = newTopic === "agentic_ai" ? "Agentic AI" : "Data Analytics";
-      
-      updateSession(from, { 
-        currentTopic: newTopic,
-        conversationStage: "topic_selected"
-      });
-      
-      const switchMsg = `${emoji} Switching to *${topicName}*!\n\nWould you like the complete overview? (yes/no)\n\nOr ask about:\n• Curriculum\n• Eligibility\n• Placement\n• Fees\n• Class schedule`;
-      
-      await sendWhatsAppMessage(from, switchMsg);
-      return;
-    }
-  }
-
-  // Handle "yes" response
-  if (cleanTextMsg === "yes" || cleanTextMsg === "yeah" || cleanTextMsg === "yep" || cleanTextMsg === "sure") {
-    if (session.currentTopic === "agentic_ai") {
-      const aiOverview = `🤖 *Agentic AI – Complete Overview*\n\n${biz.official_knowledge.faqs.agentic_ai_definition}\n\n*Key Learning Areas:*\n${biz.official_knowledge.detailed_info.agentic_ai.tools.map((t: string) => `• ${t}`).join('\n')}\n\n*What would you like to know?*\n\n1️⃣ Curriculum details\n2️⃣ Eligibility & requirements\n3️⃣ Placement support\n4️⃣ Fees & payment\n5️⃣ Class schedule\n6️⃣ Contact admissions team`;
-      await sendWhatsAppMessage(from, aiOverview);
-      return;
-    } else if (session.currentTopic === "data_analytics") {
-      const dataOverview = `📊 *Data Analytics – Complete Overview*\n\n${biz.official_knowledge.faqs.data_analytics_definition}\n\n*Key Learning Areas:*\n${biz.official_knowledge.detailed_info.data_analytics.tools.map((t: string) => `• ${t}`).join('\n')}\n\n*What would you like to know?*\n\n1️⃣ Curriculum details\n2️⃣ Eligibility & requirements\n3️⃣ Placement support\n4️⃣ Fees & payment\n5️⃣ Class schedule\n6️⃣ Contact admissions team`;
-      await sendWhatsAppMessage(from, dataOverview);
-      return;
-    }
-  }
-
-  // Handle "no" response
-  if (cleanTextMsg === "no" || cleanTextMsg === "nope" || cleanTextMsg === "not now") {
-    await sendWhatsAppMessage(from, `No problem ${userName}! I'm here whenever you're ready.\n\nYou can ask about:\n• Program details\n• Admission process\n• Career opportunities\n\nOr type "AI" or "Data" to explore programs.`);
-    return;
-  }
-
-  // Handle "thank you"
-  if (cleanTextMsg.includes("thank") || cleanTextMsg.includes("thanks")) {
-    const topicDisplay = session.currentTopic ? 
-      (session.currentTopic === "agentic_ai" ? "Agentic AI" : "Data Analytics") : 
-      "our programs";
-    
-    await sendWhatsAppMessage(from, `You're very welcome, ${userName}! 😊\n\nIs there anything else you'd like to know about ${topicDisplay}?\n\n*For enrollment, type 'enroll' anytime.*`);
-    return;
-  }
-
-  /* ===== 2. FINALLY: USE GROQ AI FOR EVERYTHING ELSE ===== */
-  // If none of the above conditions matched, use the Groq AI
-  console.log(`🤖 No keyword match for "${text}". Using Groq AI...`);
+  
+  // 7️⃣ Use Groq AI for everything else
+  console.log(`🤔 Using Groq AI for: "${text}"`);
   
   try {
-    // Update session to track we're in AI mode
-    updateSession(from, {
-      lastResponseType: "ai_generated"
-    });
-    
-    // Get AI response from Groq
     const aiResponse = await generateAIResponse(text, userName, session);
-    
-    // Send the AI response
-    await sendWhatsAppMessage(from, aiResponse);
-    
+    await sendWhatsAppMessage(from, formatForWhatsApp(aiResponse, userName));
   } catch (error) {
-    console.error("❌ Error in AI response generation:", error);
-    
-    // Fallback message if AI fails
-    const fallbackMsg = `I want to make sure I provide you with the most accurate information! For specific enrollment queries or detailed program information, I recommend:\n\n1. Filling our callback form: ${biz.contact.callback_form}\n2. Emailing us: ${biz.contact.email}\n3. Exploring our programs: 'AI' or 'Data'\n\nHow can I assist you further?`;
-    
-    await sendWhatsAppMessage(from, fallbackMsg);
+    console.error("❌ Groq failed:", error);
+    const fallback = `Hi ${userName}! For detailed help:\n\n📧 ${biz.contact.email}\n📝 ${biz.contact.callback_form}`;
+    await sendWhatsAppMessage(from, fallback);
   }
 };
+
+// NEW: Format messages for WhatsApp UI
+function formatForWhatsApp(text: string, userName: string): string {
+  // Remove excessive line breaks
+  let formatted = text.replace(/\n\s*\n\s*\n/g, '\n\n');
+  
+  // Ensure proper spacing
+  formatted = formatted.replace(/\n/g, '\n\n');
+  
+  // Add emoji if too plain
+  const lines = formatted.split('\n');
+  if (lines.length < 3 && !formatted.includes('😊') && !formatted.includes('🚀') && !formatted.includes('🤖') && !formatted.includes('📊')) {
+    formatted += ' 😊';
+  }
+  
+  return formatted;
+}
+
+// NEW: Improved FAQ matcher
+function matchFAQ(text: string): { matched: boolean; response?: string } {
+  const clean = cleanText(text);
+  
+  const faqMap: Record<string, string> = {
+    // Contact - IMMEDIATE with good formatting
+    'contact': `📞 *Contact Our Team*\n\nFor immediate assistance:\n\n📧 Email: ${biz.contact.email}\n📝 Callback Form: ${biz.contact.callback_form}\n\n*Response:* 2-4 hours on business days`,
+    'email': `📧 *Email Us*\n\n${biz.contact.email}\n\nWe check emails regularly!`,
+    'talk to human': `👨‍💼 *Speak with Advisor*\n\nPerfect! Our team would love to chat:\n\n📝 Form: ${biz.contact.callback_form}\n📧 Email: ${biz.contact.email}\n\n*They'll contact you within 24 hours*`,
+    
+    // Fees
+    'fee': `💰 *Fees & Payment*\n\n${biz.faqs.pay_after_placement}\n\n*Registration:* ${biz.faqs.registration_fee}`,
+    
+    // Placement
+    'placement': `🚀 *Placement Support*\n\n${biz.faqs.placement_support}\n\n${biz.faqs.placement_meaning}`,
+    
+    // Eligibility
+    'eligibility': `✅ *Eligibility*\n\n*Who can join:*\n${biz.faqs.eligibility.map(e => `• ${e}`).join('\n')}`,
+    
+    // Salary
+    'salary': `💷 *Salary Expectations*\n\n${biz.faqs.salary_expectation}`,
+  };
+  
+  // Check for keywords
+  for (const [keyword, response] of Object.entries(faqMap)) {
+    if (clean.includes(keyword)) {
+      return { matched: true, response };
+    }
+  }
+  
+  return { matched: false };
+}
+
+function getFollowUp(): string {
+  const followUps = [
+    "What else would you like to know?",
+    "Does this help?",
+    "Shall we explore more?",
+    "Any other questions?",
+    "Ready to learn more?"
+  ];
+  return followUps[Math.floor(Math.random() * followUps.length)];
+}
+
+function getNumberedResponse(option: number, topic: string | null, userName: string): string {
+  if (!topic) {
+    return `Hi ${userName}! First, choose a program:\n\n🤖 AI or 📊 Data?\n\n*Then use numbers 1-6*`;
+  }
+  
+  const isAI = topic === 'agentic_ai';
+  const topicName = isAI ? 'Agentic AI' : 'Data Analytics';
+  const emoji = isAI ? '🤖' : '📊';
+  
+  const responses: Record<number, string> = {
+    1: `${emoji} *${topicName} Curriculum*\n\n*Tools You'll Learn:*\n${(isAI ? biz.faqs.ai_tools : biz.faqs.data_tools).map((t, i) => `${i+1}. ${t}`).join('\n')}\n\n*Projects:* ${biz.faqs.projects}`,
+    2: `✅ *Eligibility for ${topicName}*\n\n*Who Can Join:*\n${biz.faqs.eligibility.map(e => `• ${e}`).join('\n')}\n\n*Coding:* ${isAI ? biz.faqs.ai_coding : biz.faqs.data_coding}`,
+    3: `🚀 *Placement Support*\n\n${biz.faqs.placement_support}\n\n*Career Roles:*\n${(isAI ? biz.faqs.ai_roles : biz.faqs.data_roles).map(r => `• ${r}`).join('\n')}\n\n*Salary:* ${biz.faqs.salary_expectation}`,
+    4: `💰 *Fees & Payment*\n\n${biz.faqs.pay_after_placement}\n\n*Registration:* ${biz.faqs.registration_fee}\n*Refund:* ${biz.faqs.refund_policy}`,
+    5: `📚 *Class Schedule*\n\n${biz.faqs.class_format}\n\n*Missed Class:* ${biz.faqs.missed_session}\n*Support:* ${biz.faqs.support}`,
+    6: `📞 *Contact Admissions*\n\nFor personalized guidance:\n\n📧 ${biz.contact.email}\n📝 ${biz.contact.callback_form}\n\n*Response:* Within 24 hours`
+  };
+  
+  const response = responses[option] || "Please choose 1-6";
+  return `*Thanks ${userName}!* 😊\n\n${response}\n\n${getFollowUp()}`;
+}

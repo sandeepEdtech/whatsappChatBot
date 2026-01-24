@@ -5,64 +5,63 @@ export const biz = {
     email: "support@edtechinformative.com",
     callback_form: "https://forms.gle/YourActualFormLink"
   },
-  official_knowledge: {
-    faqs: {
-      data_analytics_definition: "Data Analytics is the process of collecting, cleaning, and analysing data to help organisations make data-driven business decisions using tools like Excel, SQL, Power BI, and Python.",
-      agentic_ai_definition: "Agentic AI focuses on building autonomous AI agents that can independently make decisions, automate workflows, and interact with systems using AI models.",
-      difference: "Data Analytics: Focuses on analysing historical and current data to generate insights. Agentic AI: Focuses on creating intelligent systems that act, decide, and automate tasks.",
-      eligibility: ["Freshers", "Working professionals", "Career switchers", "Non-technical and technical backgrounds"],
-      data_coding: "Data Analytics: Basic Python & SQL (taught from scratch)",
-      ai_coding: "Agentic AI: Introductory to intermediate coding (fully covered during training)",
-      data_tools: ["Excel / Google Sheets", "SQL", "Power BI / Tableau", "Python", "Statistics & Business Analysis"],
-      ai_tools: ["Python & AI APIs", "Prompt Engineering", "Autonomous AI Agents", "Workflow Automation", "Real-world AI implementations"],
-      projects: "✅ Yes. Both courses include industry-based projects and UK-aligned case studies to build a strong portfolio.",
-      placement_support: "🚀 Yes. We provide a 100% Placement Guarantee. We ensure every eligible learner receives end-to-end placement support until they are placed, including: Job-ready training, Resume & LinkedIn optimisation, Interview preparation & mock interviews, Continuous job opportunities until placement",
-      placement_meaning: "It means: We stay with you until you secure a job, You are not left alone after course completion, Dedicated placement team works continuously on your profile (Subject to course completion, performance, and participation in placement activities.)",
-      data_roles: ["Data Analyst", "Business Analyst", "Reporting Analyst", "Junior Data Consultant"],
-      ai_roles: ["AI Analyst", "AI Automation Specialist", "Junior AI Engineer", "AI Solutions Associate"],
-      pay_after_placement: "✅ Yes. Eligible candidates can opt for Pay After Placement, allowing them to pay fees after securing employment (as per agreement terms).",
-      registration_fee: "Yes, a one-time registration fee is required to confirm enrollment and block your seat.",
-      refund_policy: "Refunds are processed as per the organisation's internal refund policy and may take 30-45 working days.",
-      class_format: "Classes are live instructor-led, and recordings are provided for revision.",
-      missed_session: "You can watch the recorded class and clarify doubts in upcoming sessions.",
-      support: "✅ Yes, you will receive dedicated mentor & doubt support throughout the course.",
-      salary_expectation: "UK (Entry-Level Data Analyst): £30,000 - £40,000 per year (Salary depends on skills, interview performance, and role.)"
-    },
-    detailed_info: {
-      data_analytics: {
-        definition: "Data Analytics is the process of collecting, cleaning, and analysing data to help organisations make data-driven business decisions.",
-        tools: ["Excel / Google Sheets", "SQL", "Power BI / Tableau", "Python", "Statistics & Business Analysis"],
-        roles: ["Data Analyst", "Business Analyst", "Reporting Analyst", "Junior Data Consultant"],
-        coding: "Basic Python and SQL are required and are taught from scratch during the course."
-      },
-      agentic_ai: {
-        definition: "Agentic AI focuses on building autonomous AI agents that can independently make decisions, automate workflows, and interact with systems using AI models.",
-        tools: ["Python & AI APIs", "Prompt Engineering", "Autonomous AI Agents", "Workflow Automation", "Real-world AI Implementations"],
-        roles: ["AI Analyst", "AI Automation Specialist", "Junior AI Engineer", "AI Solutions Associate"],
-        coding: "Introductory to intermediate-level coding is required and fully covered during training."
-      },
-      placement: {
-        guarantee: "100% Placement Guarantee",
-        details: ["Job-ready technical training", "Resume and LinkedIn profile optimisation", "Interview preparation and mock interviews", "Continuous job opportunities until placement"],
-        conditions: "Placement support is subject to course completion, performance, and active participation in placement activities."
-      },
-      fees: {
-        pay_after_placement: "Pay After Placement is available for eligible candidates as per agreement terms.",
-        registration_fee: "A one-time registration fee is required to confirm enrollment and block your seat.",
-        refund_policy: "Registration fee refunds follow the organisation's internal refund policy and may take 30-45 working days."
-      },
-      class_format: {
-        mode: "Live instructor-led sessions",
-        recordings: "Class recordings are provided for revision",
-        support: "Dedicated mentor and doubt-clearing support throughout the course"
-      }
-    }
+  
+  // Structured FAQs for quick access
+  faqs: {
+    // Program Definitions - EXACT MATCHES NEEDED
+    "data_analytics_definition": "Data Analytics is the process of collecting, cleaning, and analysing data to help organisations make data-driven business decisions using tools like Excel, SQL, Power BI, and Python.",
+    "agentic_ai_definition": "Agentic AI focuses on building autonomous AI agents that can independently make decisions, automate workflows, and interact with systems using AI models.",
+    "difference": "Data Analytics: Focuses on analysing historical and current data to generate insights. Agentic AI: Focuses on creating intelligent systems that act, decide, and automate tasks.",
+    
+    // Eligibility - EXACT MATCHES NEEDED
+    "eligibility": ["Freshers", "Working professionals", "Career switchers", "Non-technical and technical backgrounds"],
+    "data_coding": "Data Analytics: Basic Python & SQL (taught from scratch)",
+    "ai_coding": "Agentic AI: Introductory to intermediate coding (fully covered during training)",
+    
+    // Tools & Curriculum - PROPERTY NAME CHANGES!
+    // CHANGE "data_tools" to "data_tools" (same) ✓
+    "data_tools": ["Excel / Google Sheets", "SQL", "Power BI / Tableau", "Python", "Statistics & Business Analysis"],
+    
+    // CHANGE "ai_tools" to "ai_tools" (same) ✓
+    "ai_tools": ["Python & AI APIs", "Prompt Engineering", "Autonomous AI Agents", "Workflow Automation", "Real-world AI implementations"],
+    
+    "projects": "✅ Yes. Both courses include industry-based projects and UK-aligned case studies to build a strong portfolio.",
+    
+    // Placement - EXACT MATCHES NEEDED
+    "placement_support": "🚀 Yes. We provide a 100% Placement Guarantee. We ensure every eligible learner receives end-to-end placement support until they are placed.",
+    "placement_meaning": "It means: We stay with you until you secure a job. You are not left alone after course completion. Dedicated placement team works continuously on your profile.",
+    
+    // CHANGE "data_roles" to "data_roles" (same) ✓
+    "data_roles": ["Data Analyst", "Business Analyst", "Reporting Analyst", "Junior Data Consultant"],
+    
+    // CHANGE "ai_roles" to "ai_roles" (same) ✓
+    "ai_roles": ["AI Analyst", "AI Automation Specialist", "Junior AI Engineer", "AI Solutions Associate"],
+    
+    // Fees - EXACT MATCHES NEEDED
+    "pay_after_placement": "✅ Yes. Eligible candidates can opt for Pay After Placement, allowing them to pay fees after securing employment.",
+    "registration_fee": "Yes, a one-time registration fee is required to confirm enrollment and block your seat.",
+    "refund_policy": "Refunds are processed as per the organisation's internal refund policy and may take 30-45 working days.",
+    
+    // Classes - EXACT MATCHES NEEDED
+    "class_format": "Classes are live instructor-led, and recordings are provided for revision.",
+    "missed_session": "You can watch the recorded class and clarify doubts in upcoming sessions.",
+    "support": "✅ Yes, you will receive dedicated mentor & doubt support throughout the course.",
+    
+    // Salary - EXACT MATCH NEEDED
+    "salary_expectation": "UK (Entry-Level Data Analyst): £30,000 - £40,000 per year (Salary depends on skills, interview performance, and role.)"
   },
-  bot_responses: {
-    greeting: "Hi {name}! 👋 Welcome to {company}.\n\nI'm your dedicated Career Advisor. I'm here to help you explore our career-transforming programs and answer all your questions.\n\nWhich program would you like to explore first?\n\n🤖 **Agentic AI** - Build autonomous AI systems\n📊 **Data Analytics** - Master data-driven decisions\n\n*Simply reply with 'AI' or 'Data' to get started!*",
-    enrollment_interest: "That's fantastic! 🎉 I'd love to help you take the next step.\n\nFor enrollment details and personalized guidance, please fill out our callback form:\n{callback_form}\n\nOur admissions team will contact you within 24 hours to discuss:\n• Course suitability assessment\n• Payment options (including Pay After Placement)\n• Batch availability\n• Career roadmap\n\nYou can also email us directly at: {email}",
-    contact_request: "I'd be happy to connect you with our team! 📞\n\nFor immediate assistance:\n📧 Email: {email}\n📝 Callback Form: {callback_form}\n\nOur career advisors typically respond within 2-4 hours during business days.",
-    more_info_request: "I've shared all the available details about this topic. For more specific or personalized information, our career advisors would be happy to assist you.\n\nWould you like to:\n1️⃣ Fill our callback form for detailed consultation\n2️⃣ Explore other aspects of this program\n3️⃣ Switch to the other program\n\n*Reply with your choice number.*",
-    fallback: "I want to make sure I provide you with the most accurate information! For specific enrollment queries or detailed program information, I recommend:\n\n1. Filling our callback form: {callback_form}\n2. Emailing us: {email}\n3. Exploring our programs: 'AI' or 'Data'\n\nHow can I assist you further?"
+  
+  // Additional business info - OPTIONAL (not used in new handler)
+  programs: {
+    "data_analytics": {
+      name: "Data Analytics",
+      emoji: "📊",
+      description: "Master data-driven decisions"
+    },
+    "agentic_ai": {
+      name: "Agentic AI", 
+      emoji: "🤖",
+      description: "Build autonomous AI systems"
+    }
   }
 } as const;
