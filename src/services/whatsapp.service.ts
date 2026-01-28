@@ -38,7 +38,45 @@ export const sendTemplateMessage = async (to: string, name: string) => {
   });
 };
 
+export const sendDataGenAIInvite = async (to: string, name: string) => {
+  const url = `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
+  const data = {
+    messaging_product: "whatsapp",
+    to: to,
+    type: "template",
+    template: {
+      name: "data_gen_ai_invite", // Your Meta Template Name
+      language: {
+        code: "en" 
+      },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            {
+              type: "text",
+              text: name // Replaces {{1}} with the lead's name
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+  try {
+    const response = await axios.post(url, data, {
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error("❌ Template Send Error:", error.response?.data || error.message);
+    throw error;
+  }
+};
 // export const sendProgramInvitation = async (to: string, name: string) => {
 //   const payload = {
 //     messaging_product: "whatsapp",

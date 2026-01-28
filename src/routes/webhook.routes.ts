@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { Lead } from "../models/Lead";
-import { fetchLeadDetails, sendTemplateMessage, sendWhatsAppMessage } from "../services/whatsapp.service";
+import { fetchLeadDetails, sendDataGenAIInvite, sendTemplateMessage, sendWhatsAppMessage } from "../services/whatsapp.service";
 import { handleMessage } from "../utills/messageHandler";
 import { biz } from "../utills/bizData";
 
@@ -150,6 +150,139 @@ ${communityLink}`;
   }
 });
 
+// router.post("/webhook", async (req: Request, res: Response) => {
+//   console.log("🟢 [WEBHOOK HIT] Incoming Meta Webhook Event");
+  
+//   try {
+//     const entry = req.body.entry?.[0];
+//     const change = entry?.changes?.[0];
+
+//     if (!change) {
+//       console.log("⚠️ No changes object found in payload.");
+//       return res.sendStatus(200);
+//     }
+
+//     const field = change.field;
+//     const value = change.value;
+//     if (value.statuses) {
+//       const statusObj = value.statuses[0];
+//       const status = statusObj.status;
+//       const recipient = statusObj.recipient_id;
+
+//       console.log(`📉 [STATUS UPDATE] Message to ${recipient}: ${status.toUpperCase()}`);
+
+//       if (status === "failed") {
+//         console.error("❌ Message Failed Error:", JSON.stringify(statusObj.errors, null, 2));
+//       }
+//       return res.sendStatus(200); // Acknowledge the status webhook
+//     }
+//     console.log(`📌 Detected Field Type: ${field}`);
+
+//     /**
+//      * 1️⃣ HANDLE DIRECT WHATSAPP MESSAGES (Replies like 1, 2, or 3)
+//      */
+//     if (field === "messages") {
+//       console.log("💬 Processing direct WhatsApp message...");
+//       const message = value?.messages?.[0];
+      
+//       if (!message) {
+//         console.log("ℹ️ Webhook hit for 'messages' but no message object found.");
+//         return res.sendStatus(200);
+//       }
+
+//       const from = message.from;
+//       const text = (message.text?.body || "").trim(); // User's reply (e.g., "1")
+//       const contactName = value?.contacts?.[0]?.profile?.name || "there";
+
+//       console.log(`📩 Message from ${contactName} (${from}): "${text}"`);
+
+//       try {
+//         // This handles the "1", "2", or "3" replies automatically
+//         await handleMessage(from, text, contactName);
+//         console.log(`✅ Automated response sent to ${contactName}`);
+//       } catch (sendError: any) {
+//         console.error(`❌ Failed to process message:`, sendError.message);
+//       }
+//     }
+
+//     /**
+//      * 2️⃣ HANDLE LEADGEN EVENTS (Sending the FIRST Template)
+//      */
+//     else if (field === "leadgen") {
+//       console.log("📊 Processing new Lead Form...");
+      
+//       const leadId = value?.leadgen_id;
+//       if (!leadId) return res.sendStatus(200);
+
+//       // Check if lead already exists to avoid double-sending
+//       const existingLead = await Lead.findOne({ leadId });
+//       if (existingLead) {
+//         console.log(`⚠️ Duplicate lead: ${leadId}`);
+//         return res.sendStatus(200);
+//       }
+
+//       let leadInfo;
+//       try {
+//         leadInfo = await fetchLeadDetails(leadId);
+//       } catch (fetchError: any) {
+//         console.error(`❌ Failed to fetch lead details:`, fetchError.message);
+//         return res.sendStatus(200);
+//       }
+
+//       const fieldData = leadInfo?.field_data || [];
+//       const name = fieldData.find((f: any) => 
+//         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
+//       )?.values?.[0] || "there";
+
+//       const phoneField = fieldData.find((f: any) => {
+//         const n = f.name.toLowerCase();
+//         return n.includes("phone") || n.includes("mobile") || n.includes("contact");
+//       });
+
+//       let rawPhone = phoneField?.values?.[0];
+
+//       if (!rawPhone || rawPhone.trim() === "") {
+//         console.warn(`⚠️ Lead ${leadId} has no phone data. Skipping.`);
+//         return res.sendStatus(200); 
+//       }
+
+//       // Format Phone
+//       let cleanPhone = String(rawPhone).replace(/\D/g, "");
+//       if (cleanPhone.startsWith("07") && cleanPhone.length === 11) {
+//         cleanPhone = "44" + cleanPhone.substring(1);
+//       }
+      
+//       console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
+
+//       try {
+//         // 1. Save to MongoDB
+//         await Lead.create({ 
+//           name, 
+//           phone: cleanPhone, 
+//           leadId, 
+//           status: "AUTO_SENT", 
+//           createdAt: new Date()
+//         });
+//         console.log("💾 Lead saved to MongoDB");
+
+//         // 2. SEND THE TEMPLATE (The First Message)
+//         // This uses your data_gen_ai_invite template exactly
+//         await sendDataGenAIInvite(cleanPhone, name);
+//         console.log(`🎉 Template "data_gen_ai_invite" sent successfully to ${name}`);
+        
+//       } catch (dbError: any) {
+//         console.error("❌ DB/Template Error:", dbError.message);
+//       }
+//     }
+
+//     res.sendStatus(200);
+    
+//   } catch (error: any) {
+//     console.error("🔥 CRITICAL WEBHOOK ERROR:", error.message);
+//     res.sendStatus(200);
+//   }
+// });
+
 router.post("/webhook", async (req: Request, res: Response) => {
   console.log("🟢 [WEBHOOK HIT] Incoming Meta Webhook Event");
   
@@ -290,6 +423,8 @@ Edtech Informative`;
     res.sendStatus(200);
   }
 });
+
+
 // Make sure to import this in your main app
 export default router;
 
