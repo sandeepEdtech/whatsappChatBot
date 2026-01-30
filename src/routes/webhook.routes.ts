@@ -370,13 +370,8 @@ router.post("/webhook", async (req: Request, res: Response) => {
      * 1️⃣ HANDLE DIRECT WHATSAPP MESSAGES
      */
     if (field === "messages") {
-      console.log("💬 Processing direct WhatsApp message...");
       const message = value?.messages?.[0];
-      
-      if (!message) {
-        console.log("ℹ️ Webhook hit for 'messages' but no message object found.");
-        return res.sendStatus(200);
-      }
+      if (!message) return res.sendStatus(200);
 
       const from = message.from;
       const text = message.text?.body;
@@ -399,6 +394,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       const leadId = value?.leadgen_id;
       if (!leadId) return res.sendStatus(200);
 
+      // Primary DB check
       const existingLead = await Lead.findOne({ leadId });
       if (existingLead) {
         console.log(`⚠️ Duplicate lead: ${leadId}`);
@@ -419,7 +415,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
       )?.values?.[0] || "there";
 
-      // 📧 FIXED EMAIL EXTRACTION - Guaranteed not to be null
+      // 📧 EMAIL EXTRACTION
       const rawEmail = fieldData.find((f: any) => f.name === "email")?.values?.[0];
       const email = rawEmail ? rawEmail.toLowerCase().trim() : `fb_lead_${leadId}@edtechinformative.uk`;
 
@@ -439,7 +435,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
 
       try {
-        // 💾 Save to First MongoDB (Current Connection)
+        // 💾 Save to First MongoDB
         await Lead.create({ 
           name, 
           phone: cleanPhone, 
@@ -449,36 +445,35 @@ router.post("/webhook", async (req: Request, res: Response) => {
         });
         console.log("💾 Lead saved to First MongoDB");
 
-        // 💾 SAVE TO SECOND MONGODB (Logic Updated)
+        /**
+         * 💾 SAVE TO SECOND MONGODB (The Fix)
+         * We use findOneAndUpdate with 'upsert' and '$setOnInsert'
+         * This ensures that if the lead exists, we ONLY update the folder.
+         * If it's NEW, we set all the fields.
+         */
         try {
           const leadsCol = leadManagerConnection.collection('leads');
           
-          // 🔎 1. Check if lead already exists by phone or email
-          const existingInSecond = await leadsCol.findOne({ 
-            $or: [{ phone: cleanPhone }, { email: email }] 
-          });
-
-          if (existingInSecond) {
-            // ✅ FOUND: Update ONLY the folder name to avoid duplicate errors
-            await leadsCol.updateOne(
-              { _id: existingInSecond._id },
-              { $set: { folder: "duplicate from facebook", updatedAt: new Date() } }
-            );
-            console.log("📂 Duplicate updated in Lead Manager.");
-          } else {
-            // ✅ NOT FOUND: Create a completely new lead
-            await leadsCol.insertOne({
-              name,
-              email,
-              phone: cleanPhone,
-              source: 'Social Media',
-              status: 'New',
-              folder: 'Facebook Ads',
-              createdAt: new Date(),
-              updatedAt: new Date()
-            });
-            console.log("💾 New lead saved to Lead Manager.");
-          }
+          await leadsCol.findOneAndUpdate(
+            { $or: [{ phone: cleanPhone }, { email: email }] }, // Find by phone or email
+            { 
+              $set: { 
+                folder: "duplicate from facebook", 
+                updatedAt: new Date() 
+              },
+              $setOnInsert: { 
+                name,
+                email,
+                phone: cleanPhone,
+                source: 'Social Media',
+                status: 'New',
+                createdAt: new Date()
+              }
+            },
+            { upsert: true } // Create if not found, update if found
+          );
+          
+          console.log("💾 Lead Manager DB processed (Saved or Updated)");
         } catch (db2Error: any) {
           console.error("❌ Second DB Error:", db2Error.message);
         }
