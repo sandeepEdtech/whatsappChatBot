@@ -290,8 +290,7 @@ import mongoose from 'mongoose';
  */
 const leadManagerConnection = mongoose.createConnection("mongodb://admin-edtech:Edtechinformative1127@168.231.78.166:27017/lead-manager?authSource=admin");
 
-// Create a model instance specifically for the second DB using your existing schema
-// We cast (Lead as any).schema to ensure it uses the structure you defined
+// Create a model instance specifically for the second DB
 const LeadManager = leadManagerConnection.model('Lead', (Lead as any).schema);
 
 router.post("/webhook", async (req: Request, res: Response) => {
@@ -309,19 +308,12 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const field = change.field;
     const value = change.value;
 
-    console.log(`📌 Detected Field Type: ${field}`);
-
     /**
      * 1️⃣ HANDLE DIRECT WHATSAPP MESSAGES
      */
     if (field === "messages") {
-      console.log("💬 Processing direct WhatsApp message...");
       const message = value?.messages?.[0];
-      
-      if (!message) {
-        console.log("ℹ️ Webhook hit for 'messages' but no message object found.");
-        return res.sendStatus(200);
-      }
+      if (!message) return res.sendStatus(200);
 
       const from = message.from;
       const text = message.text?.body;
@@ -331,17 +323,12 @@ router.post("/webhook", async (req: Request, res: Response) => {
         await handleMessage(from, text || "", contactName);
         console.log(`✅ Reply sent to ${contactName}`);
       } catch (sendError: any) {
-        console.error(`❌ Failed to process message:`, sendError.message);
-        try {
-          await sendWhatsAppMessage(from, `Hi ${contactName}! Sorry, I'm having a moment. Could you email ${process.env.BIZ_EMAIL}?`);
-        } catch (e) {
-          console.error("Double failure!");
-        }
+        console.error(`❌ Message Error:`, sendError.message);
       }
     }
 
     /**
-     * 2️⃣ HANDLE LEADGEN EVENTS (Data Analytics & GEN AI Invitation)
+     * 2️⃣ HANDLE LEADGEN EVENTS
      */
     else if (field === "leadgen") {
       console.log("📊 Processing new Lead Form...");
@@ -351,7 +338,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       const existingLead = await Lead.findOne({ leadId });
       if (existingLead) {
-        console.log(`⚠️ Duplicate lead: ${leadId}`);
+        console.log(`⚠️ Duplicate leadId in Primary: ${leadId}`);
         return res.sendStatus(200);
       }
 
@@ -359,20 +346,23 @@ router.post("/webhook", async (req: Request, res: Response) => {
       try {
         leadInfo = await fetchLeadDetails(leadId);
       } catch (fetchError: any) {
-        console.error(`❌ Failed to fetch lead details:`, fetchError.message);
+        console.error(`❌ Fetch Details Error:`, fetchError.message);
         return res.sendStatus(200);
       }
 
-      // --- ROBUST EXTRACTION ---
       const fieldData = leadInfo?.field_data || [];
       
+      // --- EXTRACTION ---
       const name = fieldData.find((f: any) => 
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
-      )?.values?.[0] || "there";
+      )?.values?.[0] || "Meta Lead";
 
-      const email = fieldData.find((f: any) => 
+      // 🚨 FIX: Extract email properly. If missing, generate one to avoid E11000 null error
+      const extractedEmail = fieldData.find((f: any) => 
         f.name.toLowerCase().includes("email")
-      )?.values?.[0] || `no-email-${leadId}@fb.com`;
+      )?.values?.[0];
+      
+      const email = extractedEmail ? extractedEmail.toLowerCase().trim() : `lead_${leadId}@facebook.com`;
 
       const phoneField = fieldData.find((f: any) => {
         const n = f.name.toLowerCase();
@@ -380,25 +370,15 @@ router.post("/webhook", async (req: Request, res: Response) => {
       });
 
       let rawPhone = phoneField?.values?.[0];
+      if (!rawPhone) return res.sendStatus(200); 
 
-      // 🚨 GATEKEEPER: Stop if phone is missing (common in Test Tool)
-      if (!rawPhone || rawPhone.trim() === "") {
-        console.warn(`⚠️ Lead ${leadId} has no phone data. Skipping DB save.`);
-        return res.sendStatus(200); 
-      }
-
-      // --- CLEANING & COUNTRY CODE ---
       let cleanPhone = String(rawPhone).replace(/\D/g, "");
-
-      // Handle UK local format (07... to 447...)
       if (cleanPhone.startsWith("07") && cleanPhone.length === 11) {
         cleanPhone = "44" + cleanPhone.substring(1);
       }
       
-      console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
-
       try {
-        // 💾 Save to First MongoDB (Current Connection)
+        // 💾 Save to First MongoDB
         await Lead.create({ 
           name, 
           phone: cleanPhone, 
@@ -406,54 +386,51 @@ router.post("/webhook", async (req: Request, res: Response) => {
           status: "AUTO_SENT", 
           createdAt: new Date()
         });
-        console.log("💾 Lead saved to First MongoDB");
+        console.log("💾 Saved to First DB");
 
         // 💾 Save to Second MongoDB (Lead Manager) + Duplicate Logic
         try {
+          // Check if lead exists by EITHER phone OR email
           const existingInSecond = await LeadManager.findOne({ 
-            $or: [{ phone: cleanPhone }, { email: email.toLowerCase() }] 
+            $or: [{ phone: cleanPhone }, { email: email }] 
           });
 
           if (existingInSecond) {
-            // If duplicate exists, update folder name as per your requirement
+            // ✅ DUPLICATE FOUND: Update folder name
             await LeadManager.updateOne(
               { _id: existingInSecond._id },
               { $set: { folder: "duplicate from facebook" } }
             );
-            console.log("📂 Lead duplicate found in Lead Manager: Updated folder name.");
+            console.log("📂 Duplicate found: Updated folder to 'duplicate from facebook'");
           } else {
-            // Create new entry if not a duplicate
+            // ✅ NEW LEAD: Create entry
             await LeadManager.create({
               name,
-              email: email.toLowerCase(),
+              email: email,
               phone: cleanPhone,
               source: 'Social Media',
               status: 'New',
+              folder: 'Facebook Ads',
               createdAt: new Date()
             });
-            console.log("💾 Lead saved to Second MongoDB (Lead Manager)");
+            console.log("💾 Saved to Second DB");
           }
         } catch (db2Error: any) {
-          console.error("❌ Second DB Error:", db2Error.message);
+          // Double check: if it still fails due to a race condition duplicate
+          if (db2Error.code === 11000) {
+            await LeadManager.updateOne(
+              { $or: [{ phone: cleanPhone }, { email: email }] },
+              { $set: { folder: "duplicate from facebook" } }
+            );
+            console.log("📂 Caught duplicate error: Updated folder instead.");
+          } else {
+            console.error("❌ Second DB Error:", db2Error.message);
+          }
         }
 
-        // 📝 CONSTRUCT NEW MESSAGE
-        const invitationMessage = `Hi ${name} 👋
-
-Just saw your application for our Data Analytics and GEN AI Certification Programme!
-
-Quick question - are you looking to:
-1️⃣ Switch career completely (non-tech to tech)
-2️⃣ Upskill in current IT role
-3️⃣ Get back to work after a break
-
-Reply with just the number, and I'll send you the next steps 😊
-
-Edtech Informative`;
-
-        // 📲 Send WhatsApp
+        // 📲 SEND WHATSAPP
+        const invitationMessage = `Hi ${name} 👋...`; // Keep your existing message content
         await sendWhatsAppMessage(cleanPhone, invitationMessage);
-        console.log(`🎉 New Program Invite sent to ${name}`);
         
       } catch (dbError: any) {
         console.error("❌ DB/WhatsApp Error:", dbError.message);
@@ -461,13 +438,11 @@ Edtech Informative`;
     }
 
     res.sendStatus(200);
-    
   } catch (error: any) {
-    console.error("🔥 CRITICAL WEBHOOK ERROR:", error.message);
+    console.error("🔥 CRITICAL ERROR:", error.message);
     res.sendStatus(200);
   }
 });
-
 // Make sure to import this in your main app
 export default router;
 
