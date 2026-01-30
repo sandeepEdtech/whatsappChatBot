@@ -435,15 +435,20 @@ router.post("/webhook", async (req: Request, res: Response) => {
       console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
 
       try {
-        // 💾 Save to First MongoDB
-        // await Lead.create({ 
-        //   name, 
-        //   phone: cleanPhone, 
-        //   leadId, 
-        //   status: "AUTO_SENT", 
-        //   createdAt: new Date()
-        // });
-        console.log("💾 Lead saved to First MongoDB");
+        await Lead.findOneAndUpdate(
+          { leadId: leadId }, // Search by leadId
+          { 
+            $set: { status: "AUTO_SENT", updatedAt: new Date() },
+            $setOnInsert: { 
+              name, 
+              phone: cleanPhone, 
+              leadId, 
+              createdAt: new Date() 
+            }
+          },
+          { upsert: true, new: true }
+        );
+        console.log("💾 Lead processed in First MongoDB");
 
         /**
          * 💾 SAVE TO SECOND MONGODB (The Fix)
