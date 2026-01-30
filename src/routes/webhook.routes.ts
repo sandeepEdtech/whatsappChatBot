@@ -463,7 +463,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
             { $or: [{ phone: cleanPhone }, { email: email }] }, // Find by phone or email
             { 
               $set: { 
-                folder: "duplicate from facebook", 
+                folder: "Retargeted (Meta)", 
                 updatedAt: new Date() 
               },
               $setOnInsert: { 
