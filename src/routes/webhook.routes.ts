@@ -76,6 +76,68 @@ interface MetaEntry {
   changes: MetaLeadChange[];
 }
 
+// Changed to include (req, res) and added res.send so the request completes
+router.get("/lead-test", async (req: Request, res: Response) => {
+  console.log("🧪 [TEST] Starting Lead Manager Upsert Test...");
+
+  try {
+    if (leadManagerConnection.readyState !== 1) {
+      return res.status(500).json({ error: "Database not connected" });
+    }
+
+    const leadsCol = leadManagerConnection.collection('leads');
+
+    // HARDCODED DATA FOR TESTING
+    const testEmail = "test_user_@test.com"; // The email causing your error
+    const testPhone = "919999999999";
+
+    const updateData = {
+      name: "Test User",
+      email: testEmail,
+      phone: testPhone,
+      source: 'Social Media',
+      status: 'New',
+      updatedAt: new Date()
+    };
+
+    /**
+     * Logic: 
+     * 1. Search by email or phone
+     * 2. If found -> Update folder to "duplicate from facebook"
+     * 3. If NOT found -> Create new with folder "Manual Test"
+     */
+    const existing = await leadsCol.findOne({ 
+      $or: [{ email: testEmail }, { phone: testPhone }] 
+    });
+
+    if (existing) {
+      // ✅ UPDATE EXISTING
+      await leadsCol.updateOne(
+        { _id: existing._id },
+        { $set: { folder: "duplicate from facebook", updatedAt: new Date() } }
+      );
+      
+      console.log("📂 [TEST] Duplicate found. Folder updated.");
+      return res.status(200).json({ message: "Duplicate updated", folder: "duplicate from facebook" });
+    } else {
+      // ✅ CREATE NEW
+      const newLead = {
+        ...updateData,
+        folder: "Manual Test",
+        createdAt: new Date()
+      };
+      
+      await leadsCol.insertOne(newLead);
+      
+      console.log("💾 [TEST] New lead created.");
+      return res.status(200).json({ message: "New lead created", data: newLead });
+    }
+
+  } catch (error: any) {
+    console.error("❌ [TEST] Error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 // Update your router code
 router.post("/lead", async (req, res) => {
   const body = req.body;
@@ -325,7 +387,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.log(`✅ Reply sent to ${contactName}`);
       } catch (sendError: any) {
         console.error(`❌ Failed to process message:`, sendError.message);
-     
       }
     }
 
@@ -388,24 +449,24 @@ router.post("/webhook", async (req: Request, res: Response) => {
         });
         console.log("💾 Lead saved to First MongoDB");
 
-        // 💾 SAVE TO SECOND MONGODB (DIRECT COLLECTION ACCESS)
-        // This is the ONLY way to stop the E11000 {email: null} error
+        // 💾 SAVE TO SECOND MONGODB (Logic Updated)
         try {
           const leadsCol = leadManagerConnection.collection('leads');
           
+          // 🔎 1. Check if lead already exists by phone or email
           const existingInSecond = await leadsCol.findOne({ 
             $or: [{ phone: cleanPhone }, { email: email }] 
           });
 
           if (existingInSecond) {
-            // ✅ DUPLICATE FOUND: Update only the folder
+            // ✅ FOUND: Update ONLY the folder name to avoid duplicate errors
             await leadsCol.updateOne(
               { _id: existingInSecond._id },
               { $set: { folder: "duplicate from facebook", updatedAt: new Date() } }
             );
             console.log("📂 Duplicate updated in Lead Manager.");
           } else {
-            // ✅ NEW LEAD: Insert everything directly
+            // ✅ NOT FOUND: Create a completely new lead
             await leadsCol.insertOne({
               name,
               email,
