@@ -283,6 +283,14 @@ ${communityLink}`;
 //   }
 // });
 
+import mongoose from 'mongoose';
+// Import your Lead model and any other necessary types
+
+// 🔌 Setup for the second database (Lead Manager)
+const leadManagerConnection = mongoose.createConnection("mongodb://admin-edtech:Edtechinformative1127@168.231.78.166:27017/lead-manager?authSource=admin");
+// Create a model instance specifically for the second DB using your existing schema
+const LeadManager = leadManagerConnection.model('Lead', (Lead as any).schema);
+
 router.post("/webhook", async (req: Request, res: Response) => {
   console.log("🟢 [WEBHOOK HIT] Incoming Meta Webhook Event");
   
@@ -383,7 +391,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
 
       try {
-        // 💾 Save to MongoDB
+        // 💾 Save to First MongoDB (Current Connection)
         await Lead.create({ 
           name, 
           phone: cleanPhone, 
@@ -391,7 +399,41 @@ router.post("/webhook", async (req: Request, res: Response) => {
           status: "AUTO_SENT", 
           createdAt: new Date()
         });
-        console.log("💾 Lead saved to MongoDB");
+        console.log("💾 Lead saved to First MongoDB");
+
+        // 💾 Save to Second MongoDB (Lead Manager) + Duplicate Logic
+        try {
+          // Extract email for the second DB schema (Required)
+          const email = fieldData.find((f: any) => f.name.toLowerCase().includes("email"))?.values?.[0] || `no-email-${leadId}@fb.com`;
+
+          const existingInSecond = await LeadManager.findOne({ 
+            $or: [{ phone: cleanPhone }, { email: email }] 
+          });
+
+          if (existingInSecond) {
+            // If duplicate exists, update folder name
+            await LeadManager.updateOne(
+              { _id: existingInSecond._id },
+              { $set: { folder: "duplicate from facebook" } }
+            );
+            console.log("📂 Lead duplicate found in Lead Manager: Updated folder name.");
+          } else {
+            // Create new entry if not a duplicate
+            await LeadManager.create({
+              name,
+              email,
+              phone: cleanPhone,
+              source: 'Social Media',
+              status: 'New',
+            //  priority: 'Medium',
+             // folder: 'Facebook Ads', // Original folder for new leads
+              createdAt: new Date()
+            });
+            console.log("💾 Lead saved to Second MongoDB (Lead Manager)");
+          }
+        } catch (db2Error: any) {
+          console.error("❌ Second DB Error:", db2Error.message);
+        }
 
         // 📝 CONSTRUCT NEW MESSAGE
         const invitationMessage = `Hi ${name} 👋
@@ -423,7 +465,6 @@ Edtech Informative`;
     res.sendStatus(200);
   }
 });
-
 
 // Make sure to import this in your main app
 export default router;

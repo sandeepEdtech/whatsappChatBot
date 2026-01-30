@@ -2,8 +2,8 @@
 export const biz = {
   company_name: "EdTech Informative",
   contact: {
-    email: "support@edtechinformative.com",
-    callback_form: "https://forms.gle/YourActualFormLink"
+    "email": "support@edtechinformative.uk",
+    "callback_form": "https://docs.google.com/forms/d/e/1FAIpQLScy3uYPpWn0hYqltpYuBcefKe2jvmXFq7PUdgM0T5m3MWhHcQ/viewform?usp=dialog"
   },
   
   // Structured FAQs for quick access
@@ -48,7 +48,7 @@ export const biz = {
     "support": "✅ Yes, you will receive dedicated mentor & doubt support throughout the course.",
     
     // Salary - EXACT MATCH NEEDED
-    "salary_expectation": "UK (Entry-Level Data Analyst): £30,000 - £40,000 per year (Salary depends on skills, interview performance, and role.)"
+    "salary_expectation": "UK (Entry-Level Data Analyst): £45,000 - £60,000 per year (Salary depends on skills, interview performance, and role.)"
   },
   
   // Additional business info - OPTIONAL (not used in new handler)
