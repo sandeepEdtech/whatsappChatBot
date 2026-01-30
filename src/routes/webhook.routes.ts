@@ -303,8 +303,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
     const field = change.field;
     const value = change.value;
-    console.log(`📌 Detected Field Type: ${field}`);
-
 
     /**
      * 1️⃣ HANDLE DIRECT WHATSAPP MESSAGES
@@ -317,7 +315,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.log("ℹ️ Webhook hit for 'messages' but no message object found.");
         return res.sendStatus(200);
       }
-
 
       const from = message.from;
       const text = message.text?.body;
@@ -342,7 +339,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       const existingLead = await Lead.findOne({ leadId });
       if (existingLead) {
-        console.log(`⚠️ Duplicate leadId in Primary: ${leadId}`);
+        console.log(`⚠️ Duplicate leadId in Primary DB: ${leadId}`);
         return res.sendStatus(200);
       }
 
@@ -356,19 +353,29 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       const fieldData = leadInfo?.field_data || [];
       
-      // --- ROBUST EXTRACTION ---
+      // 🔍 DEBUG LOG: See exactly what fields Meta is sending
+      console.log("🔎 FULL FIELD DATA FROM META:", JSON.stringify(fieldData));
+
+      // --- EXTRACTION ---
       const name = fieldData.find((f: any) => 
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
       )?.values?.[0] || "Meta Lead";
 
-      // 📧 NEW: FETCH EMAIL FROM FACEBOOK DATA
-      const extractedEmail = fieldData.find((f: any) => 
+      // 📧 EMAIL EXTRACTION WITH LOGGING
+      const emailField = fieldData.find((f: any) => 
         f.name.toLowerCase().includes("email")
-      )?.values?.[0];
+      );
       
-      // We trim and lowercase it. If Facebook doesn't send it, we generate a unique 
-      // ID-based email to prevent the "email: null" Duplicate Key Error.
-      const email = extractedEmail ? extractedEmail.toLowerCase().trim() : `fb_${leadId}@edtechinformative.uk`;
+      let email = emailField?.values?.[0];
+      
+      if (!email) {
+        console.log("⚠️ EMAIL IS NULL FROM META. Generating unique fallback email...");
+        // This unique string prevents the E11000 duplicate key error
+        email = `no-email-${leadId}@edtechinformative.uk`;
+      } else {
+        email = email.toLowerCase().trim();
+        console.log(`📧 Email Found: ${email}`);
+      }
 
       const phoneField = fieldData.find((f: any) => {
         const n = f.name.toLowerCase();
@@ -376,20 +383,18 @@ router.post("/webhook", async (req: Request, res: Response) => {
       });
 
       let rawPhone = phoneField?.values?.[0];
-
-      if (!rawPhone || rawPhone.trim() === "") {
-        console.warn(`⚠️ Lead ${leadId} has no phone data. Skipping DB save.`);
+      if (!rawPhone) {
+        console.log("❌ No phone found in lead data.");
         return res.sendStatus(200); 
       }
 
       let cleanPhone = String(rawPhone).replace(/\D/g, "");
-
       if (cleanPhone.startsWith("07") && cleanPhone.length === 11) {
         cleanPhone = "44" + cleanPhone.substring(1);
       }
       
       console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
-      
+
       try {
         // 💾 Save to First MongoDB
         await Lead.create({ 
@@ -401,40 +406,41 @@ router.post("/webhook", async (req: Request, res: Response) => {
         });
         console.log("💾 Saved to Primary DB");
 
-        // 💾 SECOND DB LOGIC: Save email and update folder if duplicate
+        // 💾 SECOND DB LOGIC: Update folder if duplicate, else create
         try {
-          // Check if lead exists by EITHER phone OR email
+          // Check for duplicate by phone or email
           const existingInSecond = await LeadManager.findOne({ 
             $or: [{ phone: cleanPhone }, { email: email }] 
           });
 
           if (existingInSecond) {
-            // ✅ DUPLICATE FOUND: Update folder name ONLY
+            console.log("📂 Duplicate found in Lead Manager. Updating folder...");
             await LeadManager.updateOne(
               { _id: existingInSecond._id },
               { $set: { folder: "duplicate from facebook" } }
             );
-            console.log("📂 Duplicate! Updated folder in Lead Manager");
+            console.log("✅ Folder updated successfully.");
           } else {
-            // ✅ NEW LEAD: Save all data including Email
+            console.log("💾 Creating new entry in Lead Manager...");
             await LeadManager.create({
               name,
-              email: email, // This is now fetched from Facebook
+              email: email, // This is now guaranteed not to be null
               phone: cleanPhone,
               source: 'Social Media',
               status: 'New',
               folder: 'Facebook Ads',
               createdAt: new Date()
             });
-            console.log("💾 New lead saved to Lead Manager with Email");
+            console.log("✅ New lead saved to Lead Manager.");
           }
         } catch (db2Error: any) {
+          // Final catch for the 11000 error to prevent crash
           if (db2Error.code === 11000) {
+            console.log("🛡️ Caught E11000 race condition. Forcing folder update...");
             await LeadManager.updateOne(
               { $or: [{ phone: cleanPhone }, { email: email }] },
               { $set: { folder: "duplicate from facebook" } }
             );
-            console.log("📂 Handled E11000: Updated folder.");
           } else {
             console.error("❌ Second DB Error:", db2Error.message);
           }
@@ -455,6 +461,7 @@ Reply with just the number, and I'll send you the next steps 😊
 Edtech Informative`;
 
         await sendWhatsAppMessage(cleanPhone, invitationMessage);
+        console.log(`🎉 WhatsApp sent to ${cleanPhone}`);
         
       } catch (dbError: any) {
         console.error("❌ DB/WhatsApp Error:", dbError.message);
@@ -463,7 +470,7 @@ Edtech Informative`;
 
     res.sendStatus(200);
   } catch (error: any) {
-    console.error("🔥 CRITICAL ERROR:", error.message);
+    console.error("🔥 CRITICAL WEBHOOK ERROR:", error.message);
     res.sendStatus(200);
   }
 });
