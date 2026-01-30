@@ -395,7 +395,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
       if (!leadId) return res.sendStatus(200);
 
       // Primary DB check
-      
+      const existingLead = await Lead.findOne({ leadId });
+      if (existingLead) {
+        console.log(`⚠️ Duplicate lead: ${leadId}`);
+        return res.sendStatus(200);
+      }
 
       let leadInfo;
       try {
@@ -431,20 +435,15 @@ router.post("/webhook", async (req: Request, res: Response) => {
       console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
 
       try {
-        await Lead.findOneAndUpdate(
-          { leadId: leadId }, // Search by leadId
-          { 
-            $set: { status: "AUTO_SENT", updatedAt: new Date() },
-            $setOnInsert: { 
-              name, 
-              phone: cleanPhone, 
-              leadId, 
-              createdAt: new Date() 
-            }
-          },
-          { upsert: true, new: true }
-        );
-        console.log("💾 Lead processed in First MongoDB");
+        // 💾 Save to First MongoDB
+        // await Lead.create({ 
+        //   name, 
+        //   phone: cleanPhone, 
+        //   leadId, 
+        //   status: "AUTO_SENT", 
+        //   createdAt: new Date()
+        // });
+        console.log("💾 Lead saved to First MongoDB");
 
         /**
          * 💾 SAVE TO SECOND MONGODB (The Fix)
