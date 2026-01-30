@@ -284,11 +284,14 @@ ${communityLink}`;
 // });
 
 import mongoose from 'mongoose';
-// Import your Lead model and any other necessary types
 
-// 🔌 Setup for the second database (Lead Manager)
+/**
+ * 🔌 Setup for the second database (Lead Manager)
+ */
 const leadManagerConnection = mongoose.createConnection("mongodb://admin-edtech:Edtechinformative1127@168.231.78.166:27017/lead-manager?authSource=admin");
+
 // Create a model instance specifically for the second DB using your existing schema
+// We cast (Lead as any).schema to ensure it uses the structure you defined
 const LeadManager = leadManagerConnection.model('Lead', (Lead as any).schema);
 
 router.post("/webhook", async (req: Request, res: Response) => {
@@ -367,6 +370,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
       )?.values?.[0] || "there";
 
+      const email = fieldData.find((f: any) => 
+        f.name.toLowerCase().includes("email")
+      )?.values?.[0] || `no-email-${leadId}@fb.com`;
+
       const phoneField = fieldData.find((f: any) => {
         const n = f.name.toLowerCase();
         return n.includes("phone") || n.includes("mobile") || n.includes("contact");
@@ -403,15 +410,12 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
         // 💾 Save to Second MongoDB (Lead Manager) + Duplicate Logic
         try {
-          // Extract email for the second DB schema (Required)
-          const email = fieldData.find((f: any) => f.name.toLowerCase().includes("email"))?.values?.[0] || `no-email-${leadId}@fb.com`;
-
           const existingInSecond = await LeadManager.findOne({ 
-            $or: [{ phone: cleanPhone }, { email: email }] 
+            $or: [{ phone: cleanPhone }, { email: email.toLowerCase() }] 
           });
 
           if (existingInSecond) {
-            // If duplicate exists, update folder name
+            // If duplicate exists, update folder name as per your requirement
             await LeadManager.updateOne(
               { _id: existingInSecond._id },
               { $set: { folder: "duplicate from facebook" } }
@@ -421,12 +425,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
             // Create new entry if not a duplicate
             await LeadManager.create({
               name,
-              email,
+              email: email.toLowerCase(),
               phone: cleanPhone,
               source: 'Social Media',
               status: 'New',
-            //  priority: 'Medium',
-             // folder: 'Facebook Ads', // Original folder for new leads
               createdAt: new Date()
             });
             console.log("💾 Lead saved to Second MongoDB (Lead Manager)");
