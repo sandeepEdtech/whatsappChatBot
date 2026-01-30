@@ -436,13 +436,13 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       try {
         // 💾 Save to First MongoDB
-        await Lead.create({ 
-          name, 
-          phone: cleanPhone, 
-          leadId, 
-          status: "AUTO_SENT", 
-          createdAt: new Date()
-        });
+        // await Lead.create({ 
+        //   name, 
+        //   phone: cleanPhone, 
+        //   leadId, 
+        //   status: "AUTO_SENT", 
+        //   createdAt: new Date()
+        // });
         console.log("💾 Lead saved to First MongoDB");
 
         /**
