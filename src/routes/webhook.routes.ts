@@ -285,12 +285,8 @@ ${communityLink}`;
 
 import mongoose from 'mongoose';
 
-/**
- * 🔌 Setup for the second database (Lead Manager)
- */
+// 🔌 Setup for the second database (Lead Manager)
 const leadManagerConnection = mongoose.createConnection("mongodb://admin-edtech:Edtechinformative1127@168.231.78.166:27017/lead-manager?authSource=admin");
-
-// Create a model instance specifically for the second DB
 const LeadManager = leadManagerConnection.model('Lead', (Lead as any).schema);
 
 router.post("/webhook", async (req: Request, res: Response) => {
@@ -308,12 +304,19 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const field = change.field;
     const value = change.value;
 
+    console.log(`📌 Detected Field Type: ${field}`);
+
     /**
      * 1️⃣ HANDLE DIRECT WHATSAPP MESSAGES
      */
     if (field === "messages") {
+      console.log("💬 Processing direct WhatsApp message...");
       const message = value?.messages?.[0];
-      if (!message) return res.sendStatus(200);
+      
+      if (!message) {
+        console.log("ℹ️ Webhook hit for 'messages' but no message object found.");
+        return res.sendStatus(200);
+      }
 
       const from = message.from;
       const text = message.text?.body;
@@ -323,12 +326,17 @@ router.post("/webhook", async (req: Request, res: Response) => {
         await handleMessage(from, text || "", contactName);
         console.log(`✅ Reply sent to ${contactName}`);
       } catch (sendError: any) {
-        console.error(`❌ Message Error:`, sendError.message);
+        console.error(`❌ Failed to process message:`, sendError.message);
+        // try {
+        //   await sendWhatsAppMessage(from, `Hi ${contactName}! Sorry, I'm having a moment. Could you email ${process.env.BIZ_EMAIL}?`);
+        // } catch (e) {
+        //   console.error("Double failure!");
+        // }
       }
     }
 
     /**
-     * 2️⃣ HANDLE LEADGEN EVENTS
+     * 2️⃣ HANDLE LEADGEN EVENTS (Data Analytics & GEN AI Invitation)
      */
     else if (field === "leadgen") {
       console.log("📊 Processing new Lead Form...");
@@ -338,7 +346,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
       const existingLead = await Lead.findOne({ leadId });
       if (existingLead) {
-        console.log(`⚠️ Duplicate leadId in Primary: ${leadId}`);
+        console.log(`⚠️ Duplicate lead: ${leadId}`);
         return res.sendStatus(200);
       }
 
@@ -346,23 +354,20 @@ router.post("/webhook", async (req: Request, res: Response) => {
       try {
         leadInfo = await fetchLeadDetails(leadId);
       } catch (fetchError: any) {
-        console.error(`❌ Fetch Details Error:`, fetchError.message);
+        console.error(`❌ Failed to fetch lead details:`, fetchError.message);
         return res.sendStatus(200);
       }
 
+      // --- ROBUST EXTRACTION ---
       const fieldData = leadInfo?.field_data || [];
       
-      // --- EXTRACTION ---
       const name = fieldData.find((f: any) => 
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
-      )?.values?.[0] || "Meta Lead";
+      )?.values?.[0] || "there";
 
-      // 🚨 FIX: Extract email properly. If missing, generate one to avoid E11000 null error
-      const extractedEmail = fieldData.find((f: any) => 
-        f.name.toLowerCase().includes("email")
-      )?.values?.[0];
-      
-      const email = extractedEmail ? extractedEmail.toLowerCase().trim() : `lead_${leadId}@facebook.com`;
+      // 🚨 CRITICAL FIX: Ensure email is NEVER null to prevent E11000 error
+      const rawEmail = fieldData.find((f: any) => f.name.toLowerCase().includes("email"))?.values?.[0];
+      const email = rawEmail ? rawEmail.toLowerCase().trim() : `fb_lead_${leadId}@edtechinformative.uk`;
 
       const phoneField = fieldData.find((f: any) => {
         const n = f.name.toLowerCase();
@@ -370,15 +375,22 @@ router.post("/webhook", async (req: Request, res: Response) => {
       });
 
       let rawPhone = phoneField?.values?.[0];
-      if (!rawPhone) return res.sendStatus(200); 
+
+      if (!rawPhone || rawPhone.trim() === "") {
+        console.warn(`⚠️ Lead ${leadId} has no phone data. Skipping DB save.`);
+        return res.sendStatus(200); 
+      }
 
       let cleanPhone = String(rawPhone).replace(/\D/g, "");
+
       if (cleanPhone.startsWith("07") && cleanPhone.length === 11) {
         cleanPhone = "44" + cleanPhone.substring(1);
       }
       
+      console.log(`👤 Processed Lead: ${name} (${cleanPhone})`);
+
       try {
-        // 💾 Save to First MongoDB
+        // 💾 Save to First MongoDB (Current Connection)
         await Lead.create({ 
           name, 
           phone: cleanPhone, 
@@ -386,17 +398,16 @@ router.post("/webhook", async (req: Request, res: Response) => {
           status: "AUTO_SENT", 
           createdAt: new Date()
         });
-        console.log("💾 Saved to First DB");
+        console.log("💾 Lead saved to First MongoDB");
 
-        // 💾 Save to Second MongoDB (Lead Manager) + Duplicate Logic
+        // 💾 UPDATED LOGIC FOR SECOND DB: Handles duplicates by updating folder
         try {
-          // Check if lead exists by EITHER phone OR email
           const existingInSecond = await LeadManager.findOne({ 
             $or: [{ phone: cleanPhone }, { email: email }] 
           });
 
           if (existingInSecond) {
-            // ✅ DUPLICATE FOUND: Update folder name
+            // ✅ FOUND DUPLICATE: Update folder name
             await LeadManager.updateOne(
               { _id: existingInSecond._id },
               { $set: { folder: "duplicate from facebook" } }
@@ -413,20 +424,21 @@ router.post("/webhook", async (req: Request, res: Response) => {
               folder: 'Facebook Ads',
               createdAt: new Date()
             });
-            console.log("💾 Saved to Second DB");
+            console.log("💾 New lead saved to Lead Manager");
           }
         } catch (db2Error: any) {
-          // Double check: if it still fails due to a race condition duplicate
+          // Final safety: If a race condition occurs, catch the 11000 and update instead
           if (db2Error.code === 11000) {
             await LeadManager.updateOne(
               { $or: [{ phone: cleanPhone }, { email: email }] },
               { $set: { folder: "duplicate from facebook" } }
             );
-            console.log("📂 Caught duplicate error: Updated folder instead.");
+            console.log("📂 Caught E11000: Updated folder instead of crashing.");
           } else {
             console.error("❌ Second DB Error:", db2Error.message);
           }
         }
+
 
         // 📲 SEND WHATSAPP
         const invitationMessage = `Hi ${name} 👋...`; // Keep your existing message content
@@ -438,8 +450,9 @@ router.post("/webhook", async (req: Request, res: Response) => {
     }
 
     res.sendStatus(200);
+    
   } catch (error: any) {
-    console.error("🔥 CRITICAL ERROR:", error.message);
+    console.error("🔥 CRITICAL WEBHOOK ERROR:", error.message);
     res.sendStatus(200);
   }
 });
