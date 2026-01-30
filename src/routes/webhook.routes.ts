@@ -395,11 +395,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
       if (!leadId) return res.sendStatus(200);
 
       // Primary DB check
-      const existingLead = await Lead.findOne({ leadId });
-      if (existingLead) {
-        console.log(`⚠️ Duplicate lead: ${leadId}`);
-        return res.sendStatus(200);
-      }
+      
 
       let leadInfo;
       try {
