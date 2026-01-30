@@ -304,8 +304,6 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const field = change.field;
     const value = change.value;
 
-    console.log(`📌 Detected Field Type: ${field}`);
-
     /**
      * 1️⃣ HANDLE DIRECT WHATSAPP MESSAGES
      */
@@ -327,12 +325,12 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.log(`✅ Reply sent to ${contactName}`);
       } catch (sendError: any) {
         console.error(`❌ Failed to process message:`, sendError.message);
-       
+     
       }
     }
 
     /**
-     * 2️⃣ HANDLE LEADGEN EVENTS (Data Analytics & GEN AI Invitation)
+     * 2️⃣ HANDLE LEADGEN EVENTS
      */
     else if (field === "leadgen") {
       console.log("📊 Processing new Lead Form...");
@@ -354,16 +352,13 @@ router.post("/webhook", async (req: Request, res: Response) => {
         return res.sendStatus(200);
       }
 
-      // --- ROBUST EXTRACTION ---
       const fieldData = leadInfo?.field_data || [];
       
-      console.log("🔎 FULL FIELD DATA FROM META:", JSON.stringify(fieldData));
-
       const name = fieldData.find((f: any) => 
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
       )?.values?.[0] || "there";
 
-      // 📧 EXTRACTION FIX
+      // 📧 FIXED EMAIL EXTRACTION - Guaranteed not to be null
       const rawEmail = fieldData.find((f: any) => f.name === "email")?.values?.[0];
       const email = rawEmail ? rawEmail.toLowerCase().trim() : `fb_lead_${leadId}@edtechinformative.uk`;
 
@@ -373,15 +368,9 @@ router.post("/webhook", async (req: Request, res: Response) => {
       });
 
       let rawPhone = phoneField?.values?.[0];
+      if (!rawPhone) return res.sendStatus(200);
 
-      if (!rawPhone || rawPhone.trim() === "") {
-        console.warn(`⚠️ Lead ${leadId} has no phone data. Skipping DB save.`);
-        return res.sendStatus(200); 
-      }
-
-      // --- CLEANING & COUNTRY CODE ---
       let cleanPhone = String(rawPhone).replace(/\D/g, "");
-
       if (cleanPhone.startsWith("07") && cleanPhone.length === 11) {
         cleanPhone = "44" + cleanPhone.substring(1);
       }
@@ -399,22 +388,25 @@ router.post("/webhook", async (req: Request, res: Response) => {
         });
         console.log("💾 Lead saved to First MongoDB");
 
-        // 💾 Save to Second MongoDB (Lead Manager) - DIRECT COLLECTION ACCESS TO AVOID E11000
+        // 💾 SAVE TO SECOND MONGODB (DIRECT COLLECTION ACCESS)
+        // This is the ONLY way to stop the E11000 {email: null} error
         try {
-          const leadsCollection = leadManagerConnection.collection('leads');
+          const leadsCol = leadManagerConnection.collection('leads');
           
-          const existingInSecond = await leadsCollection.findOne({ 
+          const existingInSecond = await leadsCol.findOne({ 
             $or: [{ phone: cleanPhone }, { email: email }] 
           });
 
           if (existingInSecond) {
-            await leadsCollection.updateOne(
+            // ✅ DUPLICATE FOUND: Update only the folder
+            await leadsCol.updateOne(
               { _id: existingInSecond._id },
               { $set: { folder: "duplicate from facebook", updatedAt: new Date() } }
             );
-            console.log("📂 Lead duplicate found: Updated folder name.");
+            console.log("📂 Duplicate updated in Lead Manager.");
           } else {
-            await leadsCollection.insertOne({
+            // ✅ NEW LEAD: Insert everything directly
+            await leadsCol.insertOne({
               name,
               email,
               phone: cleanPhone,
@@ -424,18 +416,10 @@ router.post("/webhook", async (req: Request, res: Response) => {
               createdAt: new Date(),
               updatedAt: new Date()
             });
-            console.log("💾 New lead saved to Lead Manager Database");
+            console.log("💾 New lead saved to Lead Manager.");
           }
         } catch (db2Error: any) {
-          if (db2Error.code === 11000) {
-            console.log("🛡️ Caught E11000 race condition. Forcing folder update...");
-            await LeadManager.updateOne(
-              { $or: [{ phone: cleanPhone }, { email: email }] },
-              { $set: { folder: "duplicate from facebook" } }
-            );
-          } else {
-            console.error("❌ Second DB Error:", db2Error.message);
-          }
+          console.error("❌ Second DB Error:", db2Error.message);
         }
 
         // 📝 YOUR ORIGINAL MESSAGE (UNTOUCHED)
@@ -452,7 +436,6 @@ Reply with just the number, and I'll send you the next steps 😊
 
 Edtech Informative`;
 
-        // 📲 Send WhatsApp
         await sendWhatsAppMessage(cleanPhone, invitationMessage);
         console.log(`🎉 New Program Invite sent to ${name}`);
         
