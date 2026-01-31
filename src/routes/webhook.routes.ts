@@ -453,29 +453,65 @@ router.post("/webhook", async (req: Request, res: Response) => {
          */
         try {
           const leadsCol = leadManagerConnection.collection('leads');
-          
-          await leadsCol.findOneAndUpdate(
-            { $or: [{ phone: cleanPhone }, { email: email }] }, // Find by phone or email
-            { 
-              $set: { 
-                folder: "Retargeted (Meta)", 
-                updatedAt: new Date() 
-              },
-              $setOnInsert: { 
-                name,
-                email,
-                phone: cleanPhone,
-                source: 'Social Media',
-                status: 'New',
-                createdAt: new Date()
+          const now = new Date();
+        
+          // 1. Find if the lead exists
+          const existingLead = await leadsCol.findOne({
+            $or: [
+              { email: email.toLowerCase().trim() },
+              { phone: cleanPhone }
+            ]
+          });
+        
+          if (existingLead) {
+            console.log(`🔍 Existing lead found: ${existingLead._id}`);
+        
+            // Prepare the update object
+            const updateQuery: any = {
+              $set: {
+                folder: "Retargeted (Meta)",
+                updatedAt: now
               }
-            },
-            { upsert: true } // Create if not found, update if found
-          );
-          
-          console.log("💾 Lead Manager DB processed (Saved or Updated)");
+            };
+        
+            // 2. ONLY add to history if the lead is ALREADY assigned to someone
+            if (existingLead.assignedTo) {
+              updateQuery.$push = {
+                assignmentHistory: {
+                  assignedTo: existingLead.assignedTo, // Re-assign to the same user
+                  assignedBy: null,
+                  assignedAt: now,
+                  source: 'Reimport'
+                }
+              };
+              console.log("📝 Lead has owner. Adding to assignment history.");
+            } else {
+              console.log("ℹ️ Lead has no owner. Updating folder only.");
+            }
+        
+            await leadsCol.updateOne({ _id: existingLead._id }, updateQuery);
+        
+          } else {
+            // 3. CASE: TOTAL NEW LEAD
+            const newLeadDoc = {
+              name,
+              email: email.toLowerCase().trim(),
+              phone: cleanPhone,
+              source: 'Social Media',
+              status: 'New',
+              priority: 'Medium',
+              folder: 'Facebook Ads', // Keep empty for new leads per your request
+              assignedTo: null,
+              createdAt: now,
+              updatedAt: now,
+              assignmentHistory: []
+            };
+        
+            await leadsCol.insertOne(newLeadDoc);
+            console.log("💾 New Lead created (Unassigned)");
+          }
         } catch (db2Error: any) {
-          console.error("❌ Second DB Error:", db2Error.message);
+          console.error("❌ DB Error:", db2Error.message);
         }
 
         // 📝 YOUR ORIGINAL MESSAGE (UNTOUCHED)
