@@ -92,7 +92,7 @@ export const handleMessage = async (from: string, text: string, userName: string
   console.log(`💬 Message #${session.messageCount} from ${userName}: "${text}"`);
   
   // 1️⃣ LOG INCOMING MESSAGE
-  await saveChatToPrimaryDB(from, 'user', text, userName);
+  await saveChatToBothDBs(from, 'user', text, userName);
   
   const cleanTextMsg = cleanText(text);
 
@@ -102,7 +102,7 @@ export const handleMessage = async (from: string, text: string, userName: string
    */
   const respond = async (reply: string) => {
     await sendWhatsAppMessage(from, reply);
-    await saveChatToPrimaryDB(from, 'assistant', reply, userName);
+    await saveChatToBothDBs(from, 'assistant', reply, userName);
   };
   
   // 1️⃣ Handle greetings
@@ -297,25 +297,41 @@ function getNumberedResponse(option: number, topic: string | null, userName: str
 /**
  * 💾 SEPARATE FUNCTION: Saves every message to the Primary MongoDB
  */
-export const saveChatToPrimaryDB = async (
+import mongoose from 'mongoose';
+
+// 1. 🔌 Setup for the second database (Lead Manager)
+const leadManagerConnection = mongoose.createConnection(
+  "mongodb://admin-edtech:Edtechinformative1127@168.231.78.166:27017/lead-manager?authSource=admin"
+);
+
+// 2. Define the Model on the secondary connection
+// We use the schema from your existing Chat or Lead model
+const LeadManagerChat = leadManagerConnection.model('LeadChat', Chat.schema);
+
+export const saveChatToBothDBs = async (
   phone: string, 
   role: 'user' | 'assistant', 
   content: string, 
   userName: string
 ): Promise<void> => {
+  const cleanPhone = phone.replace(/\D/g, "");
+  const chatData = {
+    phone: cleanPhone,
+    userName,
+    role,
+    content,
+    timestamp: new Date()
+  };
+
+  // Run both saves in parallel for better performance
   try {
-    const cleanPhone = phone.replace(/\D/g, "");
-    
-    await Chat.create({
-      phone: cleanPhone,
-      userName,
-      role,
-      content,
-      timestamp: new Date()
-    });
-    
-    console.log(`💾 Primary DB: Chat logged for ${userName} (${role})`);
+    const primarySave = Chat.create(chatData);
+    const secondarySave = LeadManagerChat.create(chatData);
+
+    await Promise.all([primarySave, secondarySave]);
+
+    console.log(`✅ Saved to both DBs: Chat logged for ${userName}`);
   } catch (error: any) {
-    console.error("❌ Failed to save chat to primary DB:", error.message);
+    console.error("❌ Error during database sync:", error.message);
   }
 };
