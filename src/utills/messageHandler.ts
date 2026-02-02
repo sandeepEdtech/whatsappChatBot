@@ -2,7 +2,7 @@
 import { biz } from './bizData'; 
 import { sendWhatsAppMessage } from '../services/whatsapp.service';
 import { generateAIResponse } from '../services/groqService';
-
+import { Chat } from '../models/chat';
 // Session interface remains the same
 interface Session {
   phone: string;
@@ -91,7 +91,19 @@ export const handleMessage = async (from: string, text: string, userName: string
   
   console.log(`💬 Message #${session.messageCount} from ${userName}: "${text}"`);
   
+  // 1️⃣ LOG INCOMING MESSAGE
+  await saveChatToPrimaryDB(from, 'user', text, userName);
+  
   const cleanTextMsg = cleanText(text);
+
+  /**
+   * Helper to send WhatsApp and log to Primary DB simultaneously
+   * This ensures "Assistant" replies are always saved.
+   */
+  const respond = async (reply: string) => {
+    await sendWhatsAppMessage(from, reply);
+    await saveChatToPrimaryDB(from, 'assistant', reply, userName);
+  };
   
   // 1️⃣ Handle greetings
   const greetings = ['hi', 'hello', 'hey', 'hay', 'hii', 'hola', 'namaste', 'good morning', 'good afternoon', 'good evening'];
@@ -99,14 +111,14 @@ export const handleMessage = async (from: string, text: string, userName: string
     updateSession(from, { conversationStage: 'greeting' });
     
     const greeting = getFormattedGreeting(userName);
-    await sendWhatsAppMessage(from, greeting);
+    await respond(greeting); // Updated to save chat
     return;
   }
   
   // 2️⃣ Handle bot/identity questions
   const botResponse = handleBotQuestion(text, userName);
   if (botResponse) {
-    await sendWhatsAppMessage(from, botResponse);
+    await respond(botResponse); // Updated to save chat
     return;
   }
   
@@ -115,7 +127,7 @@ export const handleMessage = async (from: string, text: string, userName: string
       cleanTextMsg.includes('offer') || cleanTextMsg.includes('tell me about course')) {
     
     const courseOverview = getCourseOverview();
-    await sendWhatsAppMessage(from, courseOverview);
+    await respond(courseOverview); // Updated to save chat
     return;
   }
   
@@ -141,7 +153,7 @@ export const handleMessage = async (from: string, text: string, userName: string
                      `6️⃣ Contact admissions\n\n` +
                      `*Reply with number (1-6) or ask your question*`;
     
-    await sendWhatsAppMessage(from, response);
+    await respond(response); // Updated to save chat
     return;
   }
   
@@ -166,7 +178,7 @@ export const handleMessage = async (from: string, text: string, userName: string
                      `6️⃣ Contact admissions\n\n` +
                      `*Reply with number (1-6) or ask your question*`;
     
-    await sendWhatsAppMessage(from, response);
+    await respond(response); // Updated to save chat
     return;
   }
   
@@ -174,7 +186,7 @@ export const handleMessage = async (from: string, text: string, userName: string
   if (/^[1-6]$/.test(cleanTextMsg)) {
     const option = parseInt(cleanTextMsg);
     const response = getNumberedResponse(option, session.currentTopic, userName);
-    await sendWhatsAppMessage(from, response);
+    await respond(response); // Updated to save chat
     return;
   }
   
@@ -182,7 +194,7 @@ export const handleMessage = async (from: string, text: string, userName: string
   const faqMatch = matchFAQ(text);
   if (faqMatch.matched && faqMatch.response) {
     console.log(`📚 FAQ matched: "${text}"`);
-    await sendWhatsAppMessage(from, `${faqMatch.response}\n\n${getFollowUp()}`);
+    await respond(`${faqMatch.response}\n\n${getFollowUp()}`); // Updated to save chat
     return;
   }
   
@@ -191,14 +203,13 @@ export const handleMessage = async (from: string, text: string, userName: string
   
   try {
     const aiResponse = await generateAIResponse(text, userName, session);
-    await sendWhatsAppMessage(from, formatForWhatsApp(aiResponse, userName));
+    await respond(formatForWhatsApp(aiResponse, userName)); // Updated to save chat
   } catch (error) {
     console.error("❌ Groq failed:", error);
     const fallback = `Hi ${userName}! For detailed help:\n\n📧 ${biz.contact.email}\n📝 ${biz.contact.callback_form}`;
-    await sendWhatsAppMessage(from, fallback);
+    await respond(fallback); // Updated to save chat
   }
 };
-
 // NEW: Format messages for WhatsApp UI
 function formatForWhatsApp(text: string, userName: string): string {
   // Remove excessive line breaks
@@ -281,3 +292,30 @@ function getNumberedResponse(option: number, topic: string | null, userName: str
   const response = responses[option] || "Please choose 1-6";
   return `*Thanks ${userName}!* 😊\n\n${response}\n\n${getFollowUp()}`;
 }
+
+
+/**
+ * 💾 SEPARATE FUNCTION: Saves every message to the Primary MongoDB
+ */
+export const saveChatToPrimaryDB = async (
+  phone: string, 
+  role: 'user' | 'assistant', 
+  content: string, 
+  userName: string
+): Promise<void> => {
+  try {
+    const cleanPhone = phone.replace(/\D/g, "");
+    
+    await Chat.create({
+      phone: cleanPhone,
+      userName,
+      role,
+      content,
+      timestamp: new Date()
+    });
+    
+    console.log(`💾 Primary DB: Chat logged for ${userName} (${role})`);
+  } catch (error: any) {
+    console.error("❌ Failed to save chat to primary DB:", error.message);
+  }
+};
