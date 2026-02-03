@@ -543,6 +543,53 @@ Edtech Informative`;
     res.sendStatus(200);
   }
 });
+
+
+
+
+
+
+router.post("/send-reminder", async (req: Request, res: Response) => {
+  try {
+    const { phone, message } = req.body;
+
+    // 🔒 Basic validation
+    if (!phone || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone and message are required"
+      });
+    }
+
+    // ☎️ Clean phone number
+    let cleanPhone = String(phone).replace(/\D/g, "");
+
+    if (cleanPhone.startsWith("07") && cleanPhone.length === 11) {
+      cleanPhone = "44" + cleanPhone.substring(1);
+    }
+
+    console.log(`📤 Sending reminder to ${cleanPhone}`);
+
+    await sendWhatsAppMessage(cleanPhone, message);
+
+    console.log("✅ Reminder sent successfully");
+
+    return res.status(200).json({
+      success: true,
+      message: "WhatsApp reminder sent"
+    });
+
+  } catch (error: any) {
+    console.error("❌ Reminder API Error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send WhatsApp reminder"
+    });
+  }
+});
+
+
 // Make sure to import this in your main app
 export default router;
 
