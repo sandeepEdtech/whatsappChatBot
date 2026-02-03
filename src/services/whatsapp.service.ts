@@ -5,12 +5,18 @@ const token = process.env.WHATSAPP_TOKEN;
 const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
 // 1. Fetch details of the lead using the Lead ID from Meta
+// Updated function to include campaign and ad details
 export const fetchLeadDetails = async (leadId: string) => {
   const url = `https://graph.facebook.com/${API_VERSION}/${leadId}`;
-  const response = await axios.get(url, { params: { access_token: token } });
-  return response.data; // Returns field_data with name/phone
+  const response = await axios.get(url, { 
+    params: { 
+      access_token: token,
+      // Add the fields you want here:
+      fields: "field_data,created_time,campaign_name,adset_name,ad_name" 
+    } 
+  });
+  return response.data; 
 };
-
 // 2. Send the Template Message
 export const sendTemplateMessage = async (to: string, name: string) => {
   const formattedTo = String(to).replace(/\D/g, "");

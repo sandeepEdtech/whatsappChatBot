@@ -408,6 +408,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.error(`❌ Failed to fetch lead details:`, fetchError.message);
         return res.sendStatus(200);
       }
+
+      console.log("🚀 MARKETING DATA:");
+      console.log(`📍 Campaign: ${leadInfo?.campaign_name || "N/A"}`);
+      console.log(`📍 Ad Set:   ${leadInfo?.adset_name || "N/A"}`);
+      console.log(`📍 Ad Name:  ${leadInfo?.ad_name || "N/A"}`);
       const data2 = leadInfo?.field_data || [];
 
       // Correct logging
