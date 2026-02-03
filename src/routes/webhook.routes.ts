@@ -408,7 +408,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.error(`❌ Failed to fetch lead details:`, fetchError.message);
         return res.sendStatus(200);
       }
-
+      console.log(leadInfo,"all lead infromation ===>")
       const fieldData = leadInfo?.field_data || [];
       
       const name = fieldData.find((f: any) => 
