@@ -408,8 +408,11 @@ router.post("/webhook", async (req: Request, res: Response) => {
         console.error(`❌ Failed to fetch lead details:`, fetchError.message);
         return res.sendStatus(200);
       }
-      console.log(leadInfo,"all lead infromation ===>")
-      const fieldData = leadInfo?.field_data || [];
+      const data2 = leadInfo?.field_data || [];
+
+      // Correct logging
+      console.log(JSON.stringify(data2, null, 2),"we are testing final time ");     
+       const fieldData = leadInfo?.field_data || [];
       
       const name = fieldData.find((f: any) => 
         ["full_name", "first_name", "name"].includes(f.name.toLowerCase())
