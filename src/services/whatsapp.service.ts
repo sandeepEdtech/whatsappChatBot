@@ -12,8 +12,7 @@ export const fetchLeadDetails = async (leadId: string) => {
     params: { 
       access_token: token,
       // Add the fields you want here:
-      fields: "field_data,created_time,campaign_name,adset_name,ad_name" 
-    } 
+      fields: "field_data,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name"    } 
   });
   return response.data; 
 };
