@@ -462,8 +462,16 @@ router.post("/webhook", async (req: Request, res: Response) => {
         try {
           const leadsCol = leadManagerConnection.collection('leads');
           const now = new Date();
-        
-          // 1. Find if the lead exists
+          
+          // Prepare the marketing data object (Safe extraction)
+          const marketingData = {
+            campaignName: leadInfo?.campaign_name || '',
+            adsetName: leadInfo?.adset_name || '',
+            adName: leadInfo?.ad_name || '',
+            metaLeadId: leadId // Useful for tracking
+          };
+  
+          // 1. Find if the lead exists by Email or Phone
           const existingLead = await leadsCol.findOne({
             $or: [
               { email: email.toLowerCase().trim() },
@@ -472,21 +480,21 @@ router.post("/webhook", async (req: Request, res: Response) => {
           });
         
           if (existingLead) {
-            console.log(`🔍 Existing lead found: ${existingLead._id}`);
+            console.log(`🔍 Existing lead found: ${existingLead._id}. Updating info...`);
         
-            // Prepare the update object
             const updateQuery: any = {
               $set: {
                 folder: "Retargeted (Meta)",
-                updatedAt: now
+                updatedAt: now,
+                ...marketingData // ✨ Updates campaign info even for old leads
               }
             };
         
-            // 2. ONLY add to history if the lead is ALREADY assigned to someone
+            // 2. Add to history if the lead is already assigned
             if (existingLead.assignedTo) {
               updateQuery.$push = {
                 assignmentHistory: {
-                  assignedTo: existingLead.assignedTo, // Re-assign to the same user
+                  assignedTo: existingLead.assignedTo,
                   assignedBy: null,
                   assignedAt: now,
                   source: 'Reimport'
@@ -508,18 +516,19 @@ router.post("/webhook", async (req: Request, res: Response) => {
               source: 'Social Media',
               status: 'New',
               priority: 'Medium',
-              folder: 'Facebook Ads', // Keep empty for new leads per your request
+              folder: 'Facebook Ads',
               assignedTo: null,
               createdAt: now,
               updatedAt: now,
-              assignmentHistory: []
+              assignmentHistory: [],
+              ...marketingData // ✨ Saves campaign info for new leads
             };
         
             await leadsCol.insertOne(newLeadDoc);
-            console.log("💾 New Lead created (Unassigned)");
+            console.log("💾 New Lead created with Marketing Data");
           }
         } catch (db2Error: any) {
-          console.error("❌ DB Error:", db2Error.message);
+          console.error("❌ DB Error during save:", db2Error.message);
         }
 
         // 📝 YOUR ORIGINAL MESSAGE (UNTOUCHED)
