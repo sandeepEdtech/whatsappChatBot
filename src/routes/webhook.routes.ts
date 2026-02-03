@@ -550,6 +550,8 @@ Edtech Informative`;
 
 
 router.post("/send-reminder", async (req: Request, res: Response) => {
+
+  console.log("this is somehting we are tesing right now be we don't know will it work or not?")
   try {
     const { phone, message } = req.body;
 
